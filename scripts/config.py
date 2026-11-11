@@ -7,8 +7,9 @@ ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
 BUILD = ROOT / "data" / "build"
 
-# Helenaveen with the Soemeersingel north to the Willem III-hoeve: 3.5 x 5.5 km.
-XMIN, YMIN, XMAX, YMAX = 189850, 376350, 193350, 381850
+# Ede, 4 x 4 km around the Enka-terrein: the Enka chimney (175084, 448248) sits in the south-east quarter, with
+# station Ede-Wageningen in the middle and the old centre around the Oude Kerk at the top.
+XMIN, YMIN, XMAX, YMAX = 172750, 447000, 176750, 451000
 CX, CY = (XMIN + XMAX) / 2, (YMIN + YMAX) / 2
 
 # Downloads and ground textures come in square chunks of this many meters.
