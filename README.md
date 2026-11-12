@@ -21,10 +21,19 @@ The camera looks north-east and the sun comes from the west-south-west (`scripts
 
 Overlays (search, hover outlines, walking routes, the tour, traffic) are JSON files next to the tiles: changing them needs no rendering, only the small build script and `./deploy.sh`.
 
+## Earlier years
+
+The map can also show Ede as it was in 2009 and in 1987. `ERA=2009 ./build.sh` (or `ERA=1987`) builds one; the years and what they are made of are in `ERAS` in `scripts/config.py`, and each builds into its own folder `data/build-<era>`.
+
+- **2009**: the 3D BAG buildings built in 2009 or before, plus the buildings demolished since. `scripts/ahn2.py` cuts the AHN2 sheets (2007-2012, from GeoTiles) into the same chunks as the current AHN, and `scripts/ahn2_buildings.py` finds in them what is smooth, rectangular, more than 3 m high and gone today. Where AHN2 has no data (the military terrain round the barracks) the buildings come from the topographic map of 2008 (`scripts/topo_fetch.py`, `scripts/topo_buildings.py`). Roads, railway, the old station and buildings come from OpenStreetMap as of 2012-09-13, the oldest state the Overpass attic queries keep (`fetch_attic` in `scripts/fetch.py`). The area that has changed since (`scripts/era.py`: everything near buildings built later) is painted as bare sand or lawn instead of today's streets and gardens.
+- **1987**: the same, with the buildings demolished since traced from the 1987 topographic map.
+
+In the viewer a year switch "Nu / 2009 / 1987" changes the era; `?era=2009` in the address opens on one. Each era has its own tiles and overlays, listed under `eras` in `map.json`, and its own credits.
+
 ## Iterating
 
 `node render/run.mjs crop <x> <y> <w> <h> --scale 4 --out out/crop.png` renders one region of the full image in a second, which is the fastest way to try a shader or palette change. `node render/run.mjs crop 0 0 2546 1303 --scale 0.6` gives an overview of the whole map.
 
 ## Data
 
-3D BAG (TU Delft, 3DGI, CC BY 4.0), BGT (CC0), AHN (CC0), BAG addresses and the aerial photo (Beeldmateriaal Nederland, CC BY 4.0), all via [PDOK](https://www.pdok.nl). Points of interest, pitches and graveyards from OpenStreetMap (ODbL). Building descriptions from Monumenten in Nederland: Noord-Brabant (1997).
+3D BAG (TU Delft, 3DGI, CC BY 4.0), BGT (CC0), AHN (CC0), BAG addresses and the aerial photo (Beeldmateriaal Nederland, CC BY 4.0), all via [PDOK](https://www.pdok.nl). Points of interest, pitches and graveyards from OpenStreetMap (ODbL). Earlier years: AHN2 (public domain, via [GeoTiles](https://geotiles.citg.tudelft.nl)), the topographic maps of 2008 and 1987 from [Topotijdreis](https://www.topotijdreis.nl) (Kadaster, CC BY 4.0) and the history of OpenStreetMap (ODbL). Building descriptions from Monumenten in Nederland: Noord-Brabant (1997).

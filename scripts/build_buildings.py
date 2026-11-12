@@ -346,6 +346,51 @@ def add_station(verts, meta, canopy, ring):
         emit(verts, frustum(bot, top, 0.0, t["h"]), ti, 0.0, center_u=True)
 
 
+def add_sphere(verts, meta, pid, lm, x, y, n=18):
+    """A ball of radius r whose top is at `top`, on a short ring of a plinth where it meets the ground."""
+    r, top = lm["sphere"]["r"], lm["sphere"]["top"]
+    cz = top - r
+    bi = part(meta, pid, "dome", 0.0, top, lm["wall"], lm["roof"])
+    meta[bi].update({"name": lm["name"], "photo": False})
+    tris = []
+    lats = np.linspace(np.pi / 2, -np.pi / 2, n // 2 + 1)
+    lons = np.linspace(0, 2 * np.pi, n + 1)
+    for a0, a1 in zip(lats, lats[1:]):
+        if np.sin(a1) * r + cz < -0.01 and np.sin(a0) * r + cz < -0.01:
+            continue  # under the ground
+        for b0, b1 in zip(lons, lons[1:]):
+            p = lambda a, b: (x + r * np.cos(a) * np.cos(b), y + r * np.cos(a) * np.sin(b), max(0.0, cz + r * np.sin(a)))
+            q = [p(a0, b0), p(a1, b0), p(a1, b1), p(a0, b1)]
+            # The upper half is roof (lit like a roof), the lower half wall.
+            kind = 2 if a0 > 0.2 else 1
+            tris.append((kind, [np.array(q[::-1])]))
+    emit(verts, tris, bi, 0.0)
+
+
+def add_monuments(verts, meta, footprints, monuments):
+    """Monuments from landmarks.json: the Mausoleum's brick wall, with the bronze statue on top at its north end and
+    the flagpole beside its south end."""
+    for m in monuments:
+        ring = ccw(np.asarray(m["ring"], dtype=np.float64))
+        ang = long_axis(ring)
+        bi = part(meta, f"monument-{m['kind']}", m["kind"], ang, m["h"], (138, 70, 52), (110, 62, 50), param=m["h"])
+        emit(verts, extrude([ring], 0.0, m["h"]), bi, 0.0)
+        footprints.append([[round(x - CX, 2), round(CY - y, 2)] for x, y in ring])
+        d = np.array([np.cos(ang), np.sin(ang)])
+        c = ring.mean(0)
+        along = (ring - c) @ d
+        ends = [c + d * along.max() * 0.75, c + d * along.min() * 0.75]
+        north, south = sorted(ends, key=lambda p: -p[1])
+        bronze = part(meta, f"monument-{m['kind']}-statue", "bridge", ang, m["h"] + 2.2, (72, 84, 70), (72, 84, 70))
+        top = m["h"]
+        emit(verts, extrude([rect_ring(*north, 1.2, 0.8, ang)], top, top + 0.5)
+             + extrude([rect_ring(*north, 0.5, 0.45, ang)], top + 0.5, top + 1.7)
+             + extrude([rect_ring(*north, 0.3, 0.3, ang)], top + 1.7, top + 2.1), bronze, 0.0)
+        pole = part(meta, f"monument-{m['kind']}-pole", "bridge", 0.0, 9.0, (236, 236, 232), (236, 236, 232))
+        foot = south + np.array([-d[1], d[0]]) * 3.0
+        emit(verts, extrude([ngon_ring(*foot, 0.08, 6, 0.0)], 0.0, 9.0), pole, 0.0)
+
+
 def add_props(verts, meta, props):
     """Playground things from landmarks.json: a swing set (two A-frames and a beam, 3.6 m long) and an obstacle
     course (balance beams, stepping posts and a climbing frame round a ring)."""
@@ -465,13 +510,23 @@ def main():
         parent_id = feat["id"]
         parent = feat["CityObjects"][parent_id]
         attrs = parent["attributes"]
-        if attrs.get("status") not in ("Pand in gebruik", "Pand in gebruik (niet ingemeten)", "Verbouwing pand") or built_after(attrs):
+        # A demolition permit doesn't take a building down: it stands until it is gone from the BAG.
+        standing = ("Pand in gebruik", "Pand in gebruik (niet ingemeten)", "Verbouwing pand", "Sloopvergunning verleend")
+        if attrs.get("status") not in standing or built_after(attrs):
             continue
         ground = attrs.get("b3_h_maaiveld") or 0.0
         lod0 = parent["geometry"][0]["boundaries"][0][0]
         fp = V[lod0][:, :2]
         footprints.append([[round(x - CX, 2), round(CY - y, 2)] for x, y in fp])
 
+        if "sphere" in named.get(parent_id, {}):
+            # A ball instead of the block 3D BAG makes of it (the Stingerbol).
+            lm = named[parent_id]
+            c = fp.mean(0)
+            add_sphere(verts, meta, parent_id, lm, c[0], c[1])
+            # The ball is wider than its footprint: keep the tree finder off all of it.
+            footprints.append([[round(x - CX, 2), round(CY - y, 2)] for x, y in ngon_ring(c[0], c[1], lm["sphere"]["r"] + 1, 24, 0.0)])
+            continue
         geom = None
         for child_id in parent.get("children", []):
             for g in feat["CityObjects"][child_id].get("geometry", []):
@@ -533,6 +588,7 @@ def main():
     add_bridges(verts, meta, landmarks.get("bridges", []))
     add_railings(verts, meta, landmarks.get("play", []))
     add_props(verts, meta, landmarks.get("props", []))
+    add_monuments(verts, meta, footprints, landmarks.get("monuments", []))
     texture_roofs(aerial, meta)
     arr = np.concatenate(verts).astype(np.float32)
     arr.tofile(BUILD / "buildings.bin")
@@ -617,7 +673,7 @@ def add_demolished(verts, meta, footprints):
             blind = ahn2_buildings.blind()
             parts = [p for p in getattr(blind, "geoms", [blind]) if p.geom_type == "Polygon"]
             (BUILD / "blind.json").write_text(json.dumps([[[round(x, 1), round(y, 1)] for x, y in p.exterior.coords] for p in parts]))
-            found += [(ring, h, "topo") for ring, h in topo_buildings.find(kept, ERA_CONF["topo_blind"], within=blind.buffer(10))]
+            found += [(ring, h, "barracks") for ring, h in topo_buildings.find(kept, ERA_CONF["topo_blind"], within=blind.buffer(10))]
         if ERA_CONF.get("osm") == "2012":
             found += [(ring, h, "osm") for ring, h in osm_2012(kept + [ring for ring, _, _ in found])]
     for ring, h, source in found:
@@ -626,7 +682,8 @@ def add_demolished(verts, meta, footprints):
         area = abs(ring_area(ring))
         footprints.append([[round(x - CX, 2), round(CY - y, 2)] for x, y in ring])
         rand = stable_rand(f"ahn2-{bi}")
-        kind = "hall" if source == "topo" and area > 1500 else "barn" if area > 250 and h < 12 else "house"
+        # Only the factory halls have shed roofs; the barracks blocks of the military terrain have storeys of windows.
+        kind = "hall" if source == "topo" and area > 1500 else "house" if source == "barracks" else "barn" if area > 250 and h < 12 else "house"
         meta.append({"id": f"ahn2-{bi}", "kind": kind, "axis": round(long_axis(ring), 4),
                      "glass": False, "year": 1935, "floors": None, "roof": "flat", "area": round(area, 1), "height": h,
                      "roof_rgb": None, "rand": round(rand, 4), "photo": False})

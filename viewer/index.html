@@ -490,6 +490,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   // The year the map shows (?era=2009, one of map.json "eras"; none for today). An earlier year has its own tiles and
   // its own overlays (hotspots, traffic, trains, ...) in a folder of its own, map.json "data".
   const ERA = new URLSearchParams(location.search).get('era') || '';
+  const ERA_KEY = ERA || 'now';
   const DATA = ERA ? `${encodeURIComponent(ERA)}/` : '';
   let ERA_LABEL = '';
 
@@ -521,6 +522,26 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       }
     }
     for (const f of onLang) f();
+  }
+  // The credits depend on the era shown (base sources always, the sources of the past and the stories besides).
+  {
+    const a = (u, t) => `<a href="${u}" target="_blank" rel="noopener">${t}</a>`;
+    const TOPO = a('https://www.topotijdreis.nl', L('Topotijdreis', 'Topotijdreis'));
+    const updateCredits = () => {
+      const el = document.querySelector('.credits');
+      if (!el) return;
+      const base = L('Data: ', 'Data: ') + a('https://3dbag.nl', '3D BAG') + L(', BGT, AHN en luchtfoto via ', ', BGT, AHN and aerial photo via ') + a('https://www.pdok.nl', 'PDOK') + ', ' + a('https://www.openstreetmap.org/copyright', 'OpenStreetMap');
+      let past = '';
+      if (ERA_KEY === '2009') {
+        past = L('2009: AHN2 (2007-2012, publiek domein, via GeoTiles), OpenStreetMap zoals in 2012, Topografische kaart 2008 (Kadaster/', '2009: AHN2 (2007-2012, public domain, via GeoTiles), OpenStreetMap as in 2012, Topographic map 2008 (Kadaster/')
+          + TOPO + ', ' + a('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0') + ')';
+      } else if (ERA_KEY === '1987') {
+        past = L('1987: Topografische kaart 1987 (Kadaster/', '1987: Topographic map 1987 (Kadaster/') + TOPO + ', ' + a('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0') + '), AHN2';
+      }
+      el.innerHTML = base + (past ? '. ' + past : '') + L('. Verhalen: BOEi, AM (Op Enka), Wikipedia', '. Stories: BOEi, AM (Op Enka), Wikipedia');
+    };
+    updateCredits();
+    onLang.push(updateCredits);
   }
   fetch('en.json').then((r) => r.json()).then((d) => { EN = d; if (LANG === 'en') applyLang(); }).catch(() => {});
   const COS30 = Math.cos(Math.PI / 6);
@@ -1507,6 +1528,22 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     { train: 'ice', every: 430, at: 110, routes: [['thru_e'], ['thru_w']] },
     { train: 'steam', every: 900, at: 400, chance: 0.4, routes: [['thru_e'], ['thru_w']] },
   ];
+  // The fleet depends on the era shown. 2009: the stopping train is an old yellow NS stoptrein (2-4 cars), the line
+  // to Barneveld has been run by Connexxion since Dec 2006 (white with a red-orange band), the ICE already runs.
+  // 1987: everything is NS yellow with a blue band, the line to Barneveld is NS too (2 cars), and there is no ICE.
+  if (ERA_KEY === '2009' || ERA_KEY === '1987') {
+    const stop = { car: 24, h: 3.9, bands: [[0.9, 1.3, NSBLUE], [1.3, 1.9, YELLOW], [1.9, 2.9, 'win'], [2.9, 3.9, YELLOW]] };
+    Object.assign(TRAINS.sprinter, stop, { cars: [2, 3, 4], vmax: 30 });
+    if (ERA_KEY === '2009') {
+      const W = [236, 238, 240], RO = [232, 84, 36];
+      TRAINS.rr.bands = [[0.9, 1.3, RO], [1.3, 1.9, W], [1.9, 2.9, 'win'], [2.9, 3.9, W]];
+    } else {
+      Object.assign(TRAINS.rr, stop, { cars: 2, vmax: 28 });
+      TRAINS.ic.bands = [[0.9, 1.3, NSBLUE], [1.3, 2.0, YELLOW], [2.0, 2.9, 'win'], [2.9, 4.6, YELLOW]];
+      const i = SERVICES.findIndex((sv) => sv.train === 'ice');
+      if (i >= 0) SERVICES.splice(i, 1);
+    }
+  }
   // The track each route runs on over the map: one train per track at a time, as the signals allow. A train that
   // waits at Ede-Wageningen to go back the other way is off the main line meanwhile (the Sprinter on spoor 4), unless
   // it goes back on the same track (the Valleilijn, single track to Barneveld).
@@ -1697,7 +1734,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
           size: 0.62 + Math.random() * 0.2, hopper: Math.random() < 0.25, alpha: 1,
           shirt: tone(SHIRTS), legs: tone(TROUSERS), skin: tone(SKIN), hair: tone(HEADS), stride: 0 });
       }
-      if (a.h === 0 && a.kids >= 8) {
+      if (a.h <= 0 && a.kids >= 8) {
         // The rope: its middle, which way it runs, and the three children at it.
         const team = kids.slice(-3), [x, z] = a.pts[Math.floor(a.pts.length / 2)], ang = Math.random() * Math.PI;
         const rope = { x, z, ax: Math.cos(ang), az: Math.sin(ang), half: 1.7 };
@@ -1847,6 +1884,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   // heath east of the map, low and fast, the second one behind and to the side of the first.
   const OLIVE = [92, 98, 68], OLIVE_DARK = [66, 72, 50], COCKPIT = [36, 42, 50];
   const choppers = [];
+  const NO_CHINOOKS = (ERA || 'now') === '1987'; // the air force got its CH-47s in the mid-1990s
   let nextChopper = 90;
   function spawnChoppers() {
     // From the heath (RD about 177000, 450000) over the Enka site to the west or south-west edge, or the other way.
@@ -1878,14 +1916,14 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     }
     for (let i = choppers.length - 1; i >= 0; i--) if (choppers[i].s > choppers[i].cum[choppers[i].cum.length - 1]) choppers.splice(i, 1);
     if ((nextChopper -= dt) <= 0) {
-      if (!choppers.length) spawnChoppers();
+      if (!choppers.length && !NO_CHINOOKS) spawnChoppers();
       nextChopper = 360 + Math.random() * 360;
     }
   }
   // The C key calls them in, unless the two are already up.
   window.addEventListener('keydown', (e) => {
     if (e.key.toLowerCase() !== 'c' || e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
-    if (!choppers.length) spawnChoppers();
+    if (!choppers.length && !NO_CHINOOKS) spawnChoppers();
   });
 
   // A Chinook: its shadow far off on the ground, an olive body with the cockpit at the front and the higher rear pylon,

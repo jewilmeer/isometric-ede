@@ -20,6 +20,17 @@ from geo import wgs_to_rd
 
 # Buildings found by an address or point; `pand` is resolved to the 3D BAG building under that point.
 BUILDINGS = [
+    {
+        "name": "Station Ede Centrum",
+        "at": (174277, 450585),
+        "kind": "Station · 1902",
+        "style": "station1902",
+        "wall": (150, 78, 56),
+        "roof": (62, 66, 74),
+        "frame": (238, 232, 218),
+        "text": "Het kleine station midden in Ede, geopend op 1 mei 1902 aan de lijn naar Barneveld en Nijkerk, die de eiermarkt en de pluimveebedrijven van Ede verbond met de haven van Nijkerk en de lijn Utrecht-Arnhem. Het stationsgebouw uit 1902 is een rijksmonument; het werd in 1973 buiten gebruik gesteld en was daarna lang het Historisch Museum Ede. Hier stopt de Valleilijn, op weg tussen Ede-Wageningen en Barneveld.",
+        "more": "https://nl.wikipedia.org/wiki/Station_Ede_Centrum",
+    },
     # The Enka-terrein: the rayon factory of the Eerste Nederlandsche Kunstzijdefabriek, now a new neighbourhood.
     {
         "name": "Spinnerijschoorsteen",
@@ -86,22 +97,77 @@ BUILDINGS = [
     },
     {"name": "De Reehorst", "at": (174497, 448446), "kind": "Congrescentrum en hotel"},
     # The kazerneterrein, from OpenStreetMap (all tagged as municipal heritage).
-    {"name": "Johan Willem Friso kazerne", "at": (174746, 448948), "kind": "Kazerne"},
-    {"name": "Mauritskazerne", "at": (174712, 449149), "kind": "Kazerne"},
-    {"name": "Arthur Kool kazerne", "at": (174763, 449603), "kind": "Kazerne"},
-    {"name": "P.L. Bergansiuskazerne", "at": (174821, 449534), "kind": "Kazerne"},
-    {"name": "Van Essenkazerne", "at": (174952, 449617), "kind": "Kazerne"},
-    {"name": "Elias Beeckman kazerne", "at": (175356, 449896), "kind": "Kazerne"},
+    {
+        "name": "Johan Willem Friso kazerne",
+        "at": (174746, 448948),
+        "kind": "Rijksmonument · 1904",
+        "text": "Ede werd rond 1900 garnizoensplaats, om de oefenterreinen en de bouwgrond. Als eerste kwamen in 1904-1906 twee infanteriekazernes naast elkaar, Infanteriekazerne I en II; in 1934 kregen ze de namen van de prinsen Maurits en Johan Willem Friso. Hier lag het 11e, later 22e Regiment Infanterie. Het neorenaissance-hoofdgebouw, waarschijnlijk van ingenieur Van Stolk, is een rijksmonument. Sinds 2014 zit er Akoesticum, een oefencentrum voor de podiumkunsten.",
+        "more": "https://nl.wikipedia.org/wiki/Johan_Willem_Frisokazerne_(Ede)",
+    },
+    {
+        "name": "Mauritskazerne",
+        "at": (174712, 449149),
+        "kind": "Rijksmonument · 1904",
+        "text": "De tweeling van de Johan Willem Frisokazerne, tot 1934 Infanteriekazerne I. Bij de mobilisaties voor beide wereldoorlogen kwamen er uit het hele land soldaten naar Ede; achter de kazerne verrees een enorm tentenkamp. In 1994 gaf het complex van vijf kazernes hier zijn naam: Prins Mauritskazerne. Na het vertrek van Defensie eind 2010 werd het hoofdgebouw een plek voor vergaderingen en evenementen.",
+        "more": "https://nl.wikipedia.org/wiki/Mauritskazerne",
+    },
+    {
+        "name": "Arthur Kool kazerne",
+        "at": (174763, 449603),
+        "kind": "Rijksmonument · 1906-1908",
+        "text": "Een artilleriekazerne in chaletstijl, H-vormig en bijna het spiegelbeeld van de Van Essenkazerne ernaast. Eerst lag hier het 1e Regiment Huzaren, na de Eerste Wereldoorlog de 2e Artillerie Brigade. In de oorlog gebruikte de Waffen-SS hem als opleidingskazerne en heette hij met zijn buren Bismarck-Kaserne. Tot 1968 werden hier artilleristen opgeleid.",
+        "more": "https://nl.wikipedia.org/wiki/Arthur_Koolkazerne",
+    },
+    {
+        "name": "P.L. Bergansiuskazerne",
+        "at": (174821, 449534),
+        "kind": "Rijksmonument · 1936",
+        "text": "Een U-vormige kazerne in zakelijk-expressionistische stijl met trekjes van de Amsterdamse School, in 1936 geopend voor de 120 leerlingen van de School Reserve Officieren Bereden Artillerie. In de oorlog zat hier de Ortskommandantur van de bezetter, later een opleiding van de Waffen-SS; na de bevrijding waren hier tot november 1945 Canadezen gelegerd.",
+        "more": "https://nl.wikipedia.org/wiki/P.L._Bergansiuskazerne",
+    },
+    {
+        "name": "Van Essenkazerne",
+        "at": (174952, 449617),
+        "kind": "Rijksmonument · 1906-1908",
+        "text": "Het spiegelbeeld van de Arthur Koolkazerne, in chaletstijl, voor het 4e Regiment Veld Artillerie. Bij de mobilisatie van 1914 groeide het aantal soldaten in Ede tot zo'n 8000, met een tentenkamp en inkwartiering bij de Edenaren; in 1939 kwamen er ook meer dan duizend paarden.",
+        "more": "https://nl.wikipedia.org/wiki/Van_Essenkazerne",
+    },
+    {
+        "name": "Elias Beeckman kazerne",
+        "at": (175356, 449896),
+        "kind": "Rijksmonument · 1939",
+        "text": "Een infanteriekazerne uit het bouwprogramma van 1938, van de genie-kapitein A.G. Boost. Het 22e Regiment Infanterie vertrok hier in 1940 naar de Grebbeberg. Na de oorlog werden hier bataljons voor Nederlands-Indië opgeleid, later de verbindingstroepen. In 1966 werd hier de VVDM opgericht, de eerste vakbond voor dienstplichtigen ter wereld. In 2010 vertrok Defensie; de wijk Veluwse Poort kwam ervoor in de plaats, met de monumenten erin.",
+        "more": "https://nl.wikipedia.org/wiki/Elias_Beeckmankazerne",
+    },
     # Churches and the old centre.
     {"name": "Oude Kerk", "at": (174507, 450892), "kind": "Kerk"},
     {"name": "Sint Antonius van Padua", "at": (174422, 449193), "kind": "Kerk"},
     {"name": "Historisch Museum Ede", "at": (174213, 450948), "kind": "Museum"},
     {"name": "Kasteel Hoekelum", "at": (174878, 447502), "kind": "Kasteel"},
+    # The Stinger dome: a white ball of a simulator for anti-aircraft missiles, which 3D BAG draws as a block.
+    {
+        "name": "Stingerbol",
+        "at": (174928, 448887),
+        "kind": "Simulator · 1984",
+        "style": "dome",
+        "wall": (236, 236, 232),
+        "roof": (236, 236, 232),
+        "sphere": {"r": 9.6, "top": 18.0},
+        "text": "Een witte bol uit 1984 waarin militairen oefenden met het afvuren van Stinger-luchtdoelraketten: een simulator die doelen op de binnenkant van de koepel liet vliegen. Nu exploiteert de Stichting Stingerbol hem als plek voor evenementen, en is hij een van de markante herinneringen aan het militaire verleden van dit terrein, waar het World Food Center komt.",
+    },
     {"name": "50PK", "at": (174984, 449488), "kind": "Galerie"},
 ]
 
 # Points without a building of their own.
 POINTS = [
+    # The largest barracks of Ede, demolished for the new neighbourhood but for a few buildings.
+    {
+        "name": "Simon Stevinkazerne",
+        "at": (175998, 450212),
+        "kind": "Kazerne · 1939",
+        "text": "De grootste kazerne van Ede, uit het bouwprogramma van 1938, voor het 12e Regiment Motor Artillerie, dat in 1940 vocht in de Slag om de Grebbeberg. De bezetter liet hem afbouwen, met uitkijktorens en schuilkelders, en noemde hem Langenbergkaserne. Later lag hier het Regiment Verbindingstroepen. Na het vertrek van Defensie in 2010 ging het meeste tegen de grond voor de nieuwe wijk; in de jaren rond 2009 waren hier nog de gebouwen uit de jaren 70 en 80.",
+        "more": "https://nl.wikipedia.org/wiki/Simon_Stevinkazerne",
+    },
     # Not in 3D BAG; drawn from CHIMNEYS below.
     {
         "name": "Ketelschoorsteen",
@@ -114,7 +180,13 @@ POINTS = [
     {"name": "De padden van het Enka-terrein", "since": 2019, "at": (175126, 448100), "kind": "Informatiebord"},
     {"name": "Monument voor de bombardementsslachtoffers", "at": (173869, 448765), "kind": "Oorlogsmonument"},
     {"name": "Oorlogsmonument", "at": (174956, 450248), "kind": "Oorlogsmonument"},
-    {"name": "Mausoleum verzetstrijders", "at": (174999, 450636), "kind": "Monument"},
+    {
+        "name": "Mausoleum verzetstrijders",
+        "at": (174999, 450636),
+        "kind": "Erebegraafplaats · 1947",
+        "text": "Op de Paasberg, waar de Duitsers eind 1944 bijna alle bomen kapten en loopgraven groeven, ligt de erebegraafplaats van het Edese verzet. Kort na de bevrijding stelden Derk Wildeboer en Zwerus de Nooij sr. een gedenkteken voor; de inwoners brachten er ruim 71.000 gulden voor bijeen. Landschapsarchitect Jan Bijhouwer ontwierp het, met J. Brands en A. ten Ham, en Canadese militairen die nog in Ede lagen hielpen bouwen. Prins Bernhard onthulde het op 2 augustus 1947. Op de bakstenen wand staan veertig natuurstenen platen met de namen in goud, en erboven: GESTEUND DOOR HET RECHT STREDEN ZIJ VOOR DE VRIJHEID. Bovenop staat een bronzen beeld van Piet Esser, een gevallen strijder die opstaat. Er liggen dertig verzetsstrijders begraven; elk jaar op 4 mei is hier de dodenherdenking van Ede.",
+        "more": "https://nl.wikipedia.org/wiki/Mausoleum_(Ede)",
+    },
     {"name": "Anna Maria Moens", "at": (174894, 450607), "kind": "Monument"},
     {"name": "Wilmina Lantaarn", "at": (174318, 450446), "kind": "Monument"},
     {"name": "Beeld: De Danser", "at": (174542, 448576), "kind": "Beeld"},
@@ -132,10 +204,10 @@ CATEGORIES = [
         "Westhal", "De padden van het Enka-terrein", "Langzaamverkeerbrug", "De Reehorst",
     ]),
     ("kazernes", "Kazernes", [
-        "Johan Willem Friso kazerne", "Mauritskazerne", "Arthur Kool kazerne", "P.L. Bergansiuskazerne", "Van Essenkazerne",
-        "Elias Beeckman kazerne",
+        "Stingerbol", "Johan Willem Friso kazerne", "Mauritskazerne", "Arthur Kool kazerne", "P.L. Bergansiuskazerne", "Van Essenkazerne",
+        "Elias Beeckman kazerne", "Simon Stevinkazerne",
     ]),
-    ("historisch", "Historische plekken", ["Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum"]),
+    ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum"]),
     ("oorlog", "Oorlog en herdenking", [
         "Monument voor de bombardementsslachtoffers", "Oorlogsmonument", "Mausoleum verzetstrijders",
     ]),
@@ -150,6 +222,12 @@ INFO = ("note", "kind", "text", "address", "web", "more", "photo", "stop")
 
 # Steel lattice masts that 3D BAG leaves out: none in Ede yet.
 MASTS = []
+
+# Monuments built here by hand: the Mausoleum on the Paasberg, from its outline in OpenStreetMap (way 734726076): a
+# brick wall with the forty name plates, the bronze statue by Piet Esser on top and the flagpole beside it.
+MONUMENTS = [
+    {"kind": "mausoleum", "ring": [(174998.2, 450649.6), (174996.7, 450623.0), (175000.7, 450622.8), (175002.2, 450649.4)], "h": 4.2},
+]
 
 # Station roofs from the BGT "overkapping" that contains `at`: built after the AHN flight, so measured by eye.
 # The roof of Ede-Wageningen is folded grey metal, a field of triangles with triangular skylights; the station hall at
@@ -216,10 +294,23 @@ PROPS = [
     {"kind": "obstacles", "since": 2020, "at": (175089.7, 448413.9), "r": 7.5},
 ]
 
+# Ground that lies lower than its surroundings (scripts/build_buildings.py walls, render/scene.js lowers the ground
+# there): the sunken schoolyard of De Ontdekking west of the old canteen, traced in AHN, 1.3 m down with a ramp at the
+# west end.
+SUNKEN = [
+    {
+        "name": "Schoolplein De Ontdekking", "since": 2021, "depth": 1.3,
+        "area": [(175000.8, 448440.0), (174989.8, 448440.0), (174988.5, 448441.2), (174994.5, 448459.8), (174996.5, 448462.8),
+                 (174970.2, 448471.5), (174966.0, 448474.8), (174967.8, 448478.0), (174982.2, 448473.5), (174984.8, 448477.5),
+                 (174988.0, 448477.2), (174992.8, 448490.5), (175007.2, 448486.0), (175009.8, 448483.5), (175013.8, 448485.0),
+                 (175016.0, 448483.2), (175004.0, 448446.2)],
+    },
+]
+
 # Where children play, in RD meters: the schoolyard west of the old canteen and the terrace of the after-school care
 # on its top floor (3D BAG has that roof at 7.3 m).
 PLAY = [
-    {"name": "Schoolplein", "since": 2021, "area": [(174992.5, 448489.0), (175014.0, 448482.5), (175008.0, 448462.0), (174995.0, 448465.0), (174988.0, 448477.0)], "h": 0.0, "kids": 16},
+    {"name": "Schoolplein", "since": 2021, "area": [(174992.5, 448489.0), (175014.0, 448482.5), (175008.0, 448462.0), (174995.0, 448465.0), (174988.0, 448477.0)], "h": -1.3, "kids": 16},
     # The playground on the lawn by the Ketelhuis, in two sand circles (OpenStreetMap): swings in the small one, an
     # obstacle course in the big one.
     {"name": "Speeltuin: schommels", "since": 2020, "area": circle((175108.6, 448413.3), 5.1), "h": 0.0, "kids": 3,
@@ -394,6 +485,8 @@ def main():
     out["bridges"] = [{**b, "heights": bridge_heights(b)} for b in bridges]
     out["ground"], out["play"] = list(filter(in_era, GROUND)), list(filter(in_era, PLAY))
     out["props"] = list(filter(in_era, PROPS))
+    out["monuments"] = list(filter(in_era, MONUMENTS))
+    out["sunken"] = list(filter(in_era, SUNKEN))
     for m in MASTS:
         x, y = wgs_to_rd(*m["latlon"])
         out["masts"].append({**{k: v for k, v in m.items() if k != "latlon"}, "x": x, "y": y})

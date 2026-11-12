@@ -32,12 +32,20 @@ def heights():
     res = ahn2_buildings.RES
 
     def at(poly):
+        """The median over the cells inside the polygon itself, not its bounding box: a narrow platform roof that
+        runs at a slant would otherwise measure mostly the tracks beside it."""
+        from PIL import ImageDraw
+
         x0, y0, x1, y1 = poly.bounds
-        c0, c1 = int((x0 - XMIN) / res), int((x1 - XMIN) / res) + 1
-        r0, r1 = int((YMAX - y1) / res), int((YMAX - y0) / res) + 1
-        win = ndsm[max(r0, 0) : max(r1, 0), max(c0, 0) : max(c1, 0)]
-        win = win[np.isfinite(win)]
-        return float(np.median(win)) if win.size else np.nan
+        c0, r0 = max(int((x0 - XMIN) / res), 0), max(int((YMAX - y1) / res), 0)
+        c1, r1 = int((x1 - XMIN) / res) + 1, int((YMAX - y0) / res) + 1
+        win = ndsm[r0:r1, c0:c1]
+        if not win.size:
+            return np.nan
+        mask = Image.new("1", (win.shape[1], win.shape[0]), 0)
+        ImageDraw.Draw(mask).polygon([((x - XMIN) / res - c0, (YMAX - y) / res - r0) for x, y in poly.exterior.coords], fill=1)
+        vals = win[np.array(mask) & np.isfinite(win)]
+        return float(np.median(vals)) if vals.size else np.nan
 
     return at
 

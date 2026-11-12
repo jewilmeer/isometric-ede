@@ -15,7 +15,7 @@ const ROAD_ALPHA = 0.5; // marks road pixels in the color target, see makeRoads 
 
 // The era's data (render/run.mjs --era): data/build for now, data/build-<era> for an earlier year.
 const DATA = new URLSearchParams(location.search).get('data') || '/data/build';
-const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 };
+const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 , dome: 23, mausoleum: 24, station1902: 25 };
 
 const rgb = (r, g, b) => new THREE.Color(r / 255, g / 255, b / 255);
 const hash = (x) => {
@@ -246,6 +246,33 @@ vec3 buildingPattern(vec3 base) {
         if (mod(vUv2.y - 1.4, 0.7) < 0.07 || mod(col - 0.9, 0.55) < 0.06) c = vec3(0.5, 0.52, 0.5);
       }
       if (vUv2.y < 0.6) c *= 0.8;
+    } else if (type == 23) {
+      // The Stingerbol: white panels with faint seams.
+      if (mod(vUv2.x, 3.0) < 0.08 || mod(vUv2.y, 2.5) < 0.08) c *= 0.92;
+    } else if (type == 24) {
+      // The Mausoleum: brick, two rows of twenty light stone plates with gold names, an inscription band above.
+      float u = mod(vUv2.x + 0.3, 1.3), y = vUv2.y;
+      if (u > 0.15 && u < 1.15 && ((y > 0.9 && y < 1.8) || (y > 2.0 && y < 2.9))) {
+        c = vec3(0.86, 0.83, 0.76);
+        if (mod(y, 0.18) < 0.05 && u > 0.3 && u < 1.0) c = vec3(0.78, 0.66, 0.36);
+      }
+      if (y > 3.25 && y < 3.6) c = vec3(0.84, 0.8, 0.72);
+      if (y < 0.4) c *= 0.8;
+    } else if (type == 25) {
+      // Station Ede Centrum (1902): brick with tall round-headed windows, light stone bands and a darker plinth.
+      float cx = mod(vUv2.x + 1.4, 2.8) - 1.4, y = vUv2.y;
+      float sy = y - 0.9;
+      bool arch = sy > 1.85 && length(vec2(cx, sy - 1.85)) < 0.55;
+      if (abs(cx) < 0.55 && sy > 0.0 && (sy < 1.85 || arch)) {
+        c = vec3(0.2, 0.23, 0.28);
+        if (abs(cx) < 0.04 || abs(sy - 1.5) < 0.04) c = vFrame;
+        if (length(vec2(cx, sy - 1.85)) > 0.47 && (arch || sy < 0.05)) c = vFrame;
+        if (abs(cx) > 0.47) c = vFrame;
+      }
+      if (abs(cx) < 0.7 && sy > 2.4 && sy < 2.55 + 0.0 && !arch) c = vec3(0.8, 0.77, 0.7);
+      if (y > 0.5 && y < 0.7) c = vec3(0.8, 0.77, 0.7);
+      if (y > vAxis - 0.5 && y < vAxis - 0.15) c = vec3(0.8, 0.77, 0.7);
+      if (y < 0.5) c *= 0.7;
     } else if (type == 14) {
       // Brick chimney: a course line every few meters, a darker band below the top.
       if (mod(vUv2.y, 3.2) < 0.25) c *= 0.86;
