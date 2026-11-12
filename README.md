@@ -1,8 +1,8 @@
-# Isometric Helenaveen
+# Isometric Ede
 
-Hi, I'm [@jankeesvw](https://x.com/intent/follow?screen_name=jankeesvw) on X. I rebuilt my village Helenaveen in isometric pixel art, with Claude Code and nothing but open data. See it live at [jankeesvw.github.io/isometric-helenaveen](https://jankeesvw.github.io/isometric-helenaveen/).
+A zoomable isometric pixel-art map of Ede, 4 × 4 km around the Enka-terrein, the site of the old rayon factory of the Eerste Nederlandsche Kunstzijdefabriek, from Kasteel Hoekelum in the south to the Oude Kerk in the north. Live at [jewilmeer.github.io/isometric-ede](https://jewilmeer.github.io/isometric-ede/).
 
-A zoomable isometric pixel-art map of Helenaveen, 3.5 × 5.5 km from the A67 north along the Soemeersingel to the Willem III-hoeve, in the spirit of [isometric.nyc](https://cannoneyed.com/projects/isometric-nyc). Where that project painted every tile with a fine-tuned image model, this one is rendered procedurally from Dutch open data, so it is exact, seamless and rebuilds in about two minutes.
+Built on [Isometric Helenaveen](https://github.com/jankeesvw/isometric-helenaveen) by [@jankeesvw](https://x.com/jankeesvw), in the spirit of [isometric.nyc](https://cannoneyed.com/projects/isometric-nyc). The map is rendered procedurally from Dutch open data, so it is exact, seamless and rebuilds without any hand painting. The pipeline below is the original description of that project; the places, the tour and the fixed spots in the viewer are Ede's.
 
 ## Pipeline
 

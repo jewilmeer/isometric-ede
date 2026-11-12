@@ -12,6 +12,10 @@ BUILD = ROOT / "data" / "build"
 XMIN, YMIN, XMAX, YMAX = 172750, 447000, 176750, 451000
 CX, CY = (XMIN + XMAX) / 2, (YMIN + YMAX) / 2
 
+# The BAG woonplaats for addresses, and its postcode areas (the address search pages no further than 10000 results).
+PLACE = "Ede"
+POSTCODES = ("6711", "6712", "6713", "6714", "6715", "6716", "6717", "6718")
+
 # Downloads and ground textures come in square chunks of this many meters.
 CHUNK = 500
 NX, NY = int((XMAX - XMIN) / CHUNK), int((YMAX - YMIN) / CHUNK)

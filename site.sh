@@ -23,7 +23,7 @@ for look in $VIEWS; do
   dir=$([ -z "$suffix" ] && echo "" || echo "v$look/")
   full="out/full-$SCALE$suffix.png"
   [ -f "$full" ] || { echo "skipping view $look: no $full" >&2; continue; }
-  pyramid "$full" "${dir}helenaveen"
+  pyramid "$full" "${dir}map"
   # The buildings and trees once more, transparent elsewhere: the viewer lays them over the cars and walkers behind them.
   objects="out/objects-$SCALE$suffix.png"
   if [ -f "$objects" ]; then
@@ -40,9 +40,9 @@ m = json.load(open(f"out/tiles-{scale}/layout.json"))
 m["views"] = []
 for look in views:
     base = f"tiles-{stamp}/" + ("" if look == "45" else f"v{look}/")
-    if not os.path.isdir(f"{site}/{base}helenaveen_files"):
+    if not os.path.isdir(f"{site}/{base}map_files"):
         continue
-    view = {"look": int(look), "tiles": f"{base}helenaveen_files/"}
+    view = {"look": int(look), "tiles": f"{base}map_files/"}
     if os.path.isdir(f"{site}/{base}objects_files"):
         view["objects"] = f"{base}objects_files/"
     m["views"].append(view)

@@ -11,9 +11,9 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from config import CHUNK, NX, NY, RAW, XMAX, XMIN, YMAX, YMIN
+from config import CHUNK, NX, NY, PLACE, POSTCODES, RAW, XMAX, XMIN, YMAX, YMIN
 
-UA = {"User-Agent": "isometric-helenaveen/0.1"}
+UA = {"User-Agent": "isometric-ede/0.1"}
 RD = "http://www.opengis.net/def/crs/EPSG/0/28992"
 
 BGT_COLLECTIONS = [
@@ -54,22 +54,33 @@ def get(url, binary=False, tries=5):
             time.sleep(2 * (attempt + 1))
 
 
+def fetch_3dbag_cell(ix, iy):
+    """One CHUNK cell of 3D BAG; a building on a cell border comes back in both cells."""
+    x0, y0 = XMIN + ix * CHUNK, YMIN + iy * CHUNK
+    url = f"https://api.3dbag.nl/collections/pand/items?bbox={x0},{y0},{x0 + CHUNK},{y0 + CHUNK}&limit=100"
+    feats = []
+    while url:
+        page = get(url)
+        for feat in page["features"]:  # an empty page has no metadata
+            feat["transform"] = page["metadata"]["transform"]
+            feats.append(feat)
+        url = next((l["href"] for l in page["links"] if l["rel"] == "next"), None)
+    return feats
+
+
 def fetch_3dbag():
+    # The API pages slowly, so ask for every cell at once.
     out = RAW / "3dbag.jsonl"
     if out.exists():
         return
-    url = f"https://api.3dbag.nl/collections/pand/items?bbox={XMIN},{YMIN},{XMAX},{YMAX}&limit=100"
-    n = 0
-    with open(out.with_suffix(".tmp"), "w") as f:
-        while url:
-            page = get(url)
-            transform = page["metadata"]["transform"]
-            for feat in page["features"]:
-                feat["transform"] = transform
-                f.write(json.dumps(feat) + "\n")
-                n += 1
-            url = next((l["href"] for l in page["links"] if l["rel"] == "next"), None)
-            print(f"3dbag {n}/{page['numberMatched']}", file=sys.stderr)
+    seen = set()
+    with ThreadPoolExecutor(16) as pool, open(out.with_suffix(".tmp"), "w") as f:
+        for i, feats in enumerate(pool.map(lambda c: fetch_3dbag_cell(*c), [(i, j) for i in range(NX) for j in range(NY)])):
+            for feat in feats:
+                if feat["id"] not in seen:
+                    seen.add(feat["id"])
+                    f.write(json.dumps(feat) + "\n")
+            print(f"3dbag cell {i + 1}/{NX * NY}: {len(seen)} buildings", file=sys.stderr)
     out.with_suffix(".tmp").rename(out)
 
 
@@ -133,23 +144,27 @@ def fetch_ahn(cov, ix, iy, chunk=CHUNK):
 
 
 def fetch_addresses():
-    """Every BAG address in Helenaveen, for the viewer's search box."""
+    """Every BAG address of the town inside the area, for the viewer's search box. The locatieserver pages no further
+    than 10000 results, so ask per postcode area."""
     out = RAW / "addresses.json"
     if out.exists():
         return
-    pts, start = [], 0
-    while True:
-        q = urllib.parse.urlencode(
-            {"q": "*", "fq": ["woonplaatsnaam:Helenaveen", "type:adres"], "fl": "weergavenaam,centroide_rd", "rows": 100, "start": start},
-            doseq=True,
-        )
-        d = get(f"https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?{q}")["response"]
-        for doc in d["docs"]:
-            x, y = (float(v) for v in doc["centroide_rd"][6:-1].split())
-            pts.append((x, y, doc["weergavenaam"]))
-        start += 100
-        if start >= d["numFound"]:
-            break
+    pts = []
+    for pc in POSTCODES:
+        start = 0
+        while True:
+            q = urllib.parse.urlencode(
+                {"q": "*", "fq": [f"woonplaatsnaam:{PLACE}", "type:adres", f"postcode:{pc}*"], "fl": "weergavenaam,centroide_rd", "rows": 100, "start": start},
+                doseq=True,
+            )
+            d = get(f"https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?{q}")["response"]
+            for doc in d["docs"]:
+                x, y = (float(v) for v in doc["centroide_rd"][6:-1].split())
+                if XMIN <= x <= XMAX and YMIN <= y <= YMAX:
+                    pts.append((x, y, doc["weergavenaam"]))
+            start += 100
+            if start >= d["numFound"]:
+                break
     out.write_text(json.dumps(pts))
 
 
