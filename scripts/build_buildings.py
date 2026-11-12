@@ -391,6 +391,49 @@ def add_monuments(verts, meta, footprints, monuments):
         emit(verts, extrude([ngon_ring(*foot, 0.08, 6, 0.0)], 0.0, 9.0), pole, 0.0)
 
 
+def add_new_buildings(verts, meta, footprints, new):
+    """Buildings newer than 3D BAG and AHN: their BGT footprint (found by BAG id) extruded to an estimated height."""
+    if not new:
+        return
+    bgt = {f["properties"].get("bag_pnd"): f["geometry"] for f in json.load(open(RAW / "bgt_pand.geojson"))["features"] if f["geometry"]}
+    for b in new:
+        g = bgt.get(b["bag"])
+        if not g:
+            print(f"{b['name']}: no BGT footprint for BAG {b['bag']}")
+            continue
+        rings = [np.asarray(r)[:, :2] for r in (g["coordinates"] if g["type"] == "Polygon" else g["coordinates"][0])]
+        bi = part(meta, f"NL.IMBAG.Pand.{b['bag']}", b["style"], long_axis(rings[0]), b["h"], b["wall"], b["roof"], param=b["h"])
+        meta[bi]["photo"] = False
+        emit(verts, extrude(rings, 0.0, b["h"]), bi, 0.0)
+        footprints.append([[round(x - CX, 2), round(CY - y, 2)] for x, y in rings[0]])
+
+
+def add_walls(verts, meta, walls):
+    """Free-standing factory walls from landmarks.json: a thin slab along the path, broken where an arch or gate is
+    (`gaps`: RD x, y and width). render/scene.js cuts the window openings ("ruin")."""
+    for w in walls:
+        a, b = np.asarray(w["path"], dtype=np.float64)
+        d = (b - a) / np.linalg.norm(b - a)
+        length = np.linalg.norm(b - a)
+        cuts = sorted((float((np.asarray(g[:2]) - a) @ d), g[2]) for g in w.get("gaps", []))
+        spans, s0 = [], 0.0
+        for at, width in cuts:
+            spans.append((s0, at - width / 2))
+            s0 = at + width / 2
+        spans.append((s0, length))
+        ang = float(np.arctan2(d[1], d[0]))
+        bi = part(meta, f"wall-{a[0]:.0f}", "ruin", ang, w["h"], w["wall"], w["wall"], param=w["h"])
+        items = []
+        for s, e in spans:
+            if e - s > 0.5:
+                c = a + d * (s + e) / 2
+                items += extrude([rect_ring(*c, e - s, w["thick"], ang)], 0.0, w["h"])
+        # Over a gap, the arch: a lintel band across the top.
+        for at, width in cuts:
+            items += extrude([rect_ring(*(a + d * at), width + 0.2, w["thick"], ang)], w["h"] - 2.6, w["h"])
+        emit(verts, items, bi, 0.0)
+
+
 def add_props(verts, meta, props):
     """Playground things from landmarks.json: a swing set (two A-frames and a beam, 3.6 m long) and an obstacle
     course (balance beams, stepping posts and a climbing frame round a ring)."""
@@ -588,6 +631,8 @@ def main():
     add_bridges(verts, meta, landmarks.get("bridges", []))
     add_railings(verts, meta, landmarks.get("play", []))
     add_props(verts, meta, landmarks.get("props", []))
+    add_walls(verts, meta, landmarks.get("walls", []))
+    add_new_buildings(verts, meta, footprints, landmarks.get("new_buildings", []))
     add_monuments(verts, meta, footprints, landmarks.get("monuments", []))
     texture_roofs(aerial, meta)
     arr = np.concatenate(verts).astype(np.float32)

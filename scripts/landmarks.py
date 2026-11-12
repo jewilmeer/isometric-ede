@@ -54,6 +54,19 @@ BUILDINGS = [
         "text": "J.C. Hartogs, die de fabriek in 1919 bouwde, liet het kantinegebouw na de Tweede Wereldoorlog neerzetten, als een vrolijke plek die zijn medewerkers de oorlog moest doen vergeten: licht, ruim en met art-decodetails, de bovenverdiepingen zwevend op kolommen. BOEi restaureerde het eerst als casco en maakte er daarna een bijna energieneutrale brede school van: in de onderste twee lagen basisschool De Ontdekking, met het schoolplein aan de westkant, en bovenin buitenschoolse opvang en kinderopvang, met een terras. Het project won de Erfgoed Duurzaamheidsprijs 2024.",
         "more": "https://www.boei.nl/projecten/schoorstenen-enka-ede",
     },
+    {
+        "name": "Bitterzoutloods",
+        "addrs": ["Enkalaan 29"],
+        "kind": "Rijksmonument · 1919",
+        "text": "De loods waar de fabriek haar bitterzout (magnesiumsulfaat) bewaarde, een van de rijksmonumenten van het Enka-terrein. In november 2015 begon Wonen op Enka, van AM en a.s.r., aan de verbouwing tot vijftien unieke loftwoningen in het historische gebouw; in december 2016 kwamen de eerste bewoners, en werd een monument van de oude kraanbaan onthuld.",
+        "more": "https://www.am.nl/wp-content/uploads/2016/12/Persbericht-Loftwoningen-in-Bitterzoutloods-Op-Enka-in-Ede-bewoond.pdf",
+    },
+    {
+        "name": "Kantine van de kazerne",
+        "at": (174956.3, 449561.6),
+        "kind": "Keuken- en kantinegebouw · 1963",
+        "text": "Het voormalige keuken- en kantinegebouw van de kazernes, uit 1963. Hier zat later ook een tijd de Heidebrouwerij.",
+    },
     {"name": "Gymlokaal Enka", "since": 2021, "at": (174977, 448483), "kind": "Gymzaal"},
     {
         "name": "Westhal",
@@ -77,7 +90,7 @@ BUILDINGS = [
     },
     {
         "name": "Poort naar de Krimperij",
-        "at": (175210, 448526),
+        "at": (175113, 448589),
         "kind": "Fabrieksmuur · ca. 1922",
         "text": "De boog in de oude noordmuur van de fabriek, nu de doorgang van het park naar de Krimperij. De bijna honderd jaar oude muur is geen monument, maar was nog goed genoeg om te behouden: achter de gevel met de oude raampartijen staan nu nieuwe woningen, de muurwoningen van het Carré.",
         "more": "https://www.am.nl/wp-content/uploads/2024/03/OP-Enka-waar-elke-steen-een-verhaal-vertelt.pdf",
@@ -160,6 +173,20 @@ BUILDINGS = [
 
 # Points without a building of their own.
 POINTS = [
+    {
+        "name": "P+R-garage",
+        "at": (174658.7, 448644.7),
+        "since": 2026,
+        "kind": "Parkeergarage · 2026",
+        "text": "De nieuwe betaalde P+R-garage bij station Ede-Wageningen, gebouwd als deel van de vernieuwing van het station; volgens de gemeente open sinds 1 augustus 2026. De hoogte op de kaart is geschat: het gebouw is nieuwer dan de hoogtemetingen.",
+    },
+    # The north-east corner of the Carré, the main factory block, that was left standing.
+    {
+        "name": "Hoek van het Carré",
+        "at": (175210, 448526),
+        "kind": "Fabrieksmuur · 1922",
+        "text": "Een hoek van het Carré, het grote blok van de fabriek, die bleef staan toen de rest werd gesloopt. Van de noordwand bleef ook een groot deel over, als losse muur met lege ramen; tegen de binnenkant zijn later de muurwoningen gebouwd.",
+    },
     # The largest barracks of Ede, demolished for the new neighbourhood but for a few buildings.
     {
         "name": "Simon Stevinkazerne",
@@ -201,10 +228,10 @@ POINTS = [
 CATEGORIES = [
     ("enka", "Enka-terrein", [
         "Spinnerijschoorsteen", "Ketelschoorsteen", "Het Ketelhuis (Stoer)", "Kantinegebouw", "Gymlokaal Enka", "Poortgebouw", "Poort naar de Krimperij",
-        "Westhal", "De padden van het Enka-terrein", "Langzaamverkeerbrug", "De Reehorst",
+        "Westhal", "Hoek van het Carré", "Bitterzoutloods", "De padden van het Enka-terrein", "Langzaamverkeerbrug", "De Reehorst",
     ]),
     ("kazernes", "Kazernes", [
-        "Stingerbol", "Johan Willem Friso kazerne", "Mauritskazerne", "Arthur Kool kazerne", "P.L. Bergansiuskazerne", "Van Essenkazerne",
+        "Stingerbol", "Johan Willem Friso kazerne", "Mauritskazerne", "Kantine van de kazerne", "Arthur Kool kazerne", "P.L. Bergansiuskazerne", "Van Essenkazerne",
         "Elias Beeckman kazerne", "Simon Stevinkazerne",
     ]),
     ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum"]),
@@ -239,7 +266,24 @@ STATIONS = [{"name": "Ede-Wageningen", "since": 2023, "at": (174691, 448810), "h
              "tower": {"at": (174681, 448752), "h": 28.0, "w": 4.0}, "tower_colour": (206, 210, 212)}]
 
 # Buildings that only need another colour than the renderer would pick, by address.
-STYLED = [{"since": 2020, "addrs": ["Krimperij 3"], "style": "house", "wall": (236, 234, 226), "frame": (60, 62, 66)}]
+STYLED = [
+    {"since": 2020, "addrs": ["Krimperij 3"], "style": "house", "wall": (236, 234, 226), "frame": (60, 62, 66)},
+    # The muurwoningen behind the old north wall of the Carré: their outside is the factory facade.
+    {"since": 2022, "name": "Muurwoningen Carré", "near": [(175010.6, 448626.8), (175226.3, 448556.4)], "built_from": 2010,
+     "style": "factory", "wall": (118, 66, 52), "roof": (92, 94, 98), "frame": (232, 232, 226)},
+]
+
+# The north wall of the Carré, which stood free between the demolition and the muurwoningen (AM, Op Enka: the photo
+# of 2010): a brick wall two storeys high with empty window openings, with the arch to the Krimperij in it.
+WALLS = [{"until": 2022, "path": [(175010.6, 448626.8), (175226.3, 448556.4)], "h": 10.5, "thick": 0.6,
+          "gaps": [(175113, 448589, 7.0)], "wall": (128, 70, 54)}]
+
+# Buildings so new that 3D BAG has no model of them yet, and AHN was flown before: extruded from their BGT footprint
+# (by BAG id) to an estimated height.
+NEW_BUILDINGS = [
+    {"name": "P+R-garage", "since": 2026, "bag": "0228100000090180", "h": 12.0, "style": "parking",
+     "wall": (150, 152, 150), "roof": (110, 112, 114)},
+]
 
 # Brick chimneys that 3D BAG leaves out, measured in AHN: height above the ground, radius at the foot and the top.
 CHIMNEYS = [{"at": (175119.4, 448434.5), "height": 49.6, "r0": 2.6, "r1": 1.9, "wall": (150, 84, 62)}]
@@ -473,11 +517,23 @@ def main():
         out["places"].append({"name": p["name"], "note": p.get("note"), "x": x, "y": y, "h": 2.0})
         out["hotspots"].append({"name": p["name"], "x": x, "y": y, **{k: p[k] for k in INFO if k in p}})
     for b in filter(in_era, STYLED):
-        pts = [address_xy(a) for a in b["addrs"]]
-        for pid in {building_at(rings, *pt)[0] for pt in pts}:
-            assert pid, f"no building at {b['addrs']}"
-            out["buildings"][pid] = {"name": ", ".join(b["addrs"]), **{k: v for k, v in b.items() if k != "addrs"}}
-            print(f"{', '.join(b['addrs'])}: restyled {pid}")
+        if "near" in b:
+            # Every building of `built_from` or later within 4 m of the line.
+            from shapely.geometry import LineString, Polygon
+
+            line = LineString(b["near"])
+            pids = [rid for rid, ring, a in rings
+                    if (a.get("oorspronkelijkbouwjaar") or 0) >= b["built_from"] and Polygon(ring).distance(line) < 4]
+            name = b["name"]
+        else:
+            pids = {building_at(rings, *address_xy(a))[0] for a in b["addrs"]}
+            name = ", ".join(b["addrs"])
+        for pid in pids:
+            assert pid, f"no building for {name}"
+            out["buildings"][pid] = {"name": name, **{k: v for k, v in b.items() if k not in ("addrs", "near", "built_from", "name")}}
+        print(f"{name}: restyled {len(pids)}")
+    out["walls"] = list(filter(in_era, WALLS))
+    out["new_buildings"] = list(filter(in_era, NEW_BUILDINGS))
     out["chimneys"] = [{**{k: v for k, v in c.items() if k != "at"}, "x": c["at"][0], "y": c["at"][1]} for c in filter(in_era, CHIMNEYS)]
     out["stations"] = list(filter(in_era, STATIONS))
     bridges = list(filter(in_era, BRIDGES))

@@ -15,7 +15,7 @@ const ROAD_ALPHA = 0.5; // marks road pixels in the color target, see makeRoads 
 
 // The era's data (render/run.mjs --era): data/build for now, data/build-<era> for an earlier year.
 const DATA = new URLSearchParams(location.search).get('data') || '/data/build';
-const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 , dome: 23, mausoleum: 24, station1902: 25 };
+const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 , dome: 23, mausoleum: 24, station1902: 25, ruin: 26, parking: 27 };
 
 const rgb = (r, g, b) => new THREE.Color(r / 255, g / 255, b / 255);
 const hash = (x) => {
@@ -273,6 +273,20 @@ vec3 buildingPattern(vec3 base) {
       if (y > 0.5 && y < 0.7) c = vec3(0.8, 0.77, 0.7);
       if (y > vAxis - 0.5 && y < vAxis - 0.15) c = vec3(0.8, 0.77, 0.7);
       if (y < 0.5) c *= 0.7;
+    } else if (type == 26) {
+      // A free-standing factory wall: two storeys of empty window openings between brick piers, the sky showing
+      // through.
+      float col = mod(vUv2.x, 4.2), y = vUv2.y;
+      bool hole = col > 0.7 && col < 3.5 && ((y > 1.2 && y < 4.0) || (y > 5.2 && y < 8.0));
+      if (hole) discard;
+      if (y > vAxis - 0.5) c = vec3(0.82, 0.8, 0.74);
+    } else if (type == 27) {
+      // Parking garage: open decks every 3 m between concrete edge beams, cars in the dark gaps.
+      float fl = mod(vUv2.y, 3.0);
+      if (fl > 0.9 && fl < 2.5 && vUv2.y < vAxis - 0.5) {
+        c = vec3(0.22, 0.23, 0.25);
+        if (mod(vUv2.x, 2.6) < 1.6 && fl < 1.6) c = vec3(0.45, 0.47, 0.52);
+      }
     } else if (type == 14) {
       // Brick chimney: a course line every few meters, a darker band below the top.
       if (mod(vUv2.y, 3.2) < 0.25) c *= 0.86;
@@ -463,6 +477,135 @@ async function makeTrees() {
 // ---------------------------------------------------------------------------------------------
 // Ground and diorama block
 
+
+// ---------------------------------------------------------------------------------------------
+// Sunken areas (landmarks.json "sunken"): ground and roads are cut out of them at y = 0 by a point-in-polygon test
+// in the fragment shader, and drawn again `depth` lower, only inside, plus concrete walls around the edge.
+
+const MAX_SUNKEN = 4, MAX_VERTS = 48;
+const sunkenUniforms = {
+  uSunkenPts: { value: Array.from({ length: MAX_SUNKEN * MAX_VERTS }, () => new THREE.Vector2()) },
+  uSunkenN: { value: new Array(MAX_SUNKEN).fill(0) },
+};
+let sunken = []; // [{ depth, pts: [[x, z], ...] }] in local coordinates
+
+async function loadSunken(area) {
+  let list = [];
+  try {
+    const lm = await (await fetch(`${DATA}/landmarks.json`)).json();
+    list = Array.isArray(lm.sunken) ? lm.sunken : [];
+  } catch (e) { /* no landmarks in this era */ }
+  sunken = list.slice(0, MAX_SUNKEN).map((s) => {
+    let pts = s.area.map(([X, Y]) => [X - area.cx, area.cy - Y]);
+    if (pts.length > 1 && pts[0][0] === pts.at(-1)[0] && pts[0][1] === pts.at(-1)[1]) pts = pts.slice(0, -1);
+    return { depth: s.depth || 1.3, pts: pts.slice(0, MAX_VERTS) };
+  }).filter((s) => s.pts.length >= 3);
+  sunken.forEach((s, i) => {
+    sunkenUniforms.uSunkenN.value[i] = s.pts.length;
+    s.pts.forEach(([x, z], j) => sunkenUniforms.uSunkenPts.value[i * MAX_VERTS + j].set(x, z));
+  });
+}
+
+const insideSunken = (x, z, s) => {
+  let inside = false;
+  for (let i = 0, j = s.pts.length - 1; i < s.pts.length; j = i++) {
+    const [xi, zi] = s.pts[i], [xj, zj] = s.pts[j];
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+};
+
+// Discards the fragments outside (inverse) or inside the sunken polygons. A no-op without any.
+function patchSunken(mat, inverse) {
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, r) => {
+    prev?.(sh, r);
+    Object.assign(sh.uniforms, sunkenUniforms);
+    sh.vertexShader = sh.vertexShader
+      .replace('void main() {', 'varying vec2 vSunkenW;\nvoid main() {')
+      .replace('#include <project_vertex>', '#include <project_vertex>\n  vSunkenW = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('void main() {', `varying vec2 vSunkenW;
+      uniform vec2 uSunkenPts[${MAX_SUNKEN * MAX_VERTS}];
+      uniform int uSunkenN[${MAX_SUNKEN}];
+      bool inSunken() {
+        for (int k = 0; k < ${MAX_SUNKEN}; k++) {
+          int n = uSunkenN[k];
+          if (n < 3) continue;
+          bool inside = false;
+          for (int i = 0; i < ${MAX_VERTS}; i++) {
+            if (i >= n) break;
+            int jj = i == 0 ? n - 1 : i - 1;
+            vec2 a = uSunkenPts[k * ${MAX_VERTS} + i], b = uSunkenPts[k * ${MAX_VERTS} + jj];
+            if ((a.y > vSunkenW.y) != (b.y > vSunkenW.y) && vSunkenW.x < (b.x - a.x) * (vSunkenW.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+          }
+          if (inside) return true;
+        }
+        return false;
+      }
+      void main() {`)
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n  if (${inverse ? '!' : ''}inSunken()) discard;`);
+  };
+  mat.customProgramCacheKey = () => (inverse ? 'sunken-in' : 'sunken-out');
+  return mat;
+}
+
+// Duplicates every mesh of `group` that overlaps a sunken polygon, lowered by its depth and showing only the inside.
+function addPits(group) {
+  for (const s of sunken) {
+    const xs = s.pts.map((p) => p[0]), zs = s.pts.map((p) => p[1]);
+    const box = new THREE.Box3(new THREE.Vector3(Math.min(...xs), -1, Math.min(...zs)), new THREE.Vector3(Math.max(...xs), 1, Math.max(...zs)));
+    for (const m of [...group.children]) {
+      if (!m.userData.cut) continue;
+      m.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(m);
+      if (!b.intersectsBox(box)) continue;
+      const mat = m.material.clone();
+      mat.onBeforeCompile = undefined;
+      patchSunken(mat, true);
+      const pit = new THREE.Mesh(m.geometry, mat);
+      pit.position.copy(m.position);
+      pit.rotation.copy(m.rotation);
+      pit.position.y -= s.depth;
+      group.add(pit);
+    }
+  }
+}
+
+function makeSunkenWalls() {
+  const group = new THREE.Group();
+  const pos = [], nor = [], col = [];
+  const WALL = [0.72, 0.71, 0.68], COPING = [0.55, 0.54, 0.51];
+  for (const s of sunken) {
+    let area2 = 0;
+    s.pts.forEach(([x, z], i) => { const [x2, z2] = s.pts[(i + 1) % s.pts.length]; area2 += x * z2 - x2 * z; });
+    // Pit-side normal of each edge: left of the direction for a polygon that runs one way, right for the other.
+    const sgn = area2 > 0 ? 1 : -1;
+    s.pts.forEach(([ax, az], i) => {
+      const [bx, bz] = s.pts[(i + 1) % s.pts.length];
+      const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
+      if (len < 1e-6) return;
+      const nx = sgn * -dz / len, nz = sgn * dx / len;
+      const quad = (y0, y1, c) => {
+        let v = [[ax, y0, az], [bx, y0, bz], [bx, y1, bz], [ax, y1, az]];
+        // Winding: (b - a) x up must point along the normal, otherwise flip.
+        // (dx,0,dz) x (0,1,0) = (-dz, 0, dx)
+        if (-dz * nx + dx * nz < 0) v = [v[1], v[0], v[3], v[2]];
+        for (const k of [0, 1, 2, 0, 2, 3]) { pos.push(...v[k]); nor.push(nx, 0, nz); col.push(...c); }
+      };
+      quad(-s.depth, -0.14, WALL);
+      quad(-0.14, 0.0, COPING);
+    });
+  }
+  if (!pos.length) return group;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  group.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true })));
+  return group;
+}
+
 async function makeGround(renderer, area) {
   const group = new THREE.Group();
   const loader = new THREE.TextureLoader();
@@ -477,7 +620,8 @@ async function makeGround(renderer, area) {
           tex.minFilter = THREE.LinearMipmapLinearFilter;
           tex.magFilter = THREE.LinearFilter;
           tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-          const plane = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: tex }));
+          const plane = new THREE.Mesh(new THREE.PlaneGeometry(size, size), patchSunken(new THREE.MeshBasicMaterial({ map: tex }), false));
+          plane.userData.cut = true;
           plane.rotation.x = -Math.PI / 2;
           plane.position.set(-area.hx + size / 2 + ix * size, 0, area.hz - size / 2 - iy * size);
           group.add(plane);
@@ -486,6 +630,7 @@ async function makeGround(renderer, area) {
     }
   }
   await Promise.all(jobs);
+  addPits(group);
   return group;
 }
 
@@ -557,12 +702,13 @@ async function makeRoads(renderer, area) {
     const common = { map: tex, clippingPlanes, blending: THREE.NoBlending, opacity: ROAD_ALPHA };
     if (tri.length) {
       // Triangulation can come out either way round; the camera only looks down at them, so draw both sides.
-      group.add(new THREE.Mesh(geometry(tri), new THREE.MeshBasicMaterial({ ...common, side: THREE.DoubleSide })));
+      { const m = new THREE.Mesh(geometry(tri), patchSunken(new THREE.MeshBasicMaterial({ ...common, side: THREE.DoubleSide }), false)); m.userData.cut = true; group.add(m); }
     }
     if (line.length) {
-      group.add(new THREE.LineSegments(geometry(line), new THREE.LineBasicMaterial({ ...common, color: new THREE.Color(KERB, KERB, KERB) })));
+      { const m = new THREE.LineSegments(geometry(line), patchSunken(new THREE.LineBasicMaterial({ ...common, color: new THREE.Color(KERB, KERB, KERB) }), false)); m.userData.cut = true; group.add(m); }
     }
   }));
+  addPits(group);
   return group;
 }
 
@@ -584,7 +730,7 @@ function makeSlab(area) {
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
   const side = new THREE.MeshLambertMaterial({ map: tex });
-  const top = new THREE.MeshBasicMaterial({ color: 0x3a2a1c });
+  const top = patchSunken(new THREE.MeshBasicMaterial({ color: 0x3a2a1c }), false); // cut open for the sunken areas
   const box = new THREE.Mesh(new THREE.BoxGeometry(area.hx * 2, SLAB, area.hz * 2), [side, side, top, top, side, side]);
   box.position.y = -SLAB / 2 - 0.02;
   return box;
@@ -705,8 +851,9 @@ async function main() {
   const area = await (await fetch(`${DATA}/area.json`)).json();
   area.hx = (area.xmax - area.xmin) / 2;
   area.hz = (area.ymax - area.ymin) / 2;
+  await loadSunken(area);
   const [ground, roads, buildings, trees] = await Promise.all([makeGround(renderer, area), makeRoads(renderer, area), makeBuildings(), makeTrees()]);
-  scene.add(ground, roads, buildings, trees, makeSlab(area));
+  scene.add(ground, roads, buildings, trees, makeSlab(area), makeSunkenWalls());
 
   const { cam, width, height } = makeCamera(scale, area, look);
   let target = null;
