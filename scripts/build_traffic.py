@@ -18,9 +18,11 @@ Output: data/build/traffic.json
           cyclist or a walker picks its next lane (0: not for them), "d", "db" and "dw": cars, cyclists and walkers
           per km, "bo" and "wo": how much further right a cyclist and a walker go than the lane,
           "h": per view in config.VIEWS, [[s0, s1], ...] stretches in meters along the lane behind a building,
-          "t": the same under tree crowns}]
+          "t": the same under tree crowns, "y": on a bridge, the height of each point of p}]
   exits  the nodes where a road leaves the map
   views  the views the hidden stretches are for, as in config.VIEWS
+  play   [{"name", "h": height of the floor, "kids", "pts": [[x, z], ...] every meter inside the area, "hid": per view a
+          string with a 1 for each point hidden behind a building}]: where children play (scripts/landmarks.py PLAY)
 """
 
 import json
@@ -30,7 +32,7 @@ from collections import Counter
 import numpy as np
 from PIL import Image, ImageDraw
 from shapely import affinity, contains_xy, prepare
-from shapely.geometry import LineString, Point, box, shape
+from shapely.geometry import LineString, Point, Polygon, box, shape
 from shapely.ops import unary_union
 
 from config import BUILD, CX, CY, RAW, VIEWS, XMAX, XMIN, YMAX, YMIN
@@ -335,6 +337,20 @@ def stretches_where(hit, s):
     return [[round(a, 1), round(b, 1)] for a, b in merged if b - a >= 1]
 
 
+def on_bridges(lanes_):
+    """Heights for the lanes that run over a bridge from landmarks.json: the deck height under each point."""
+    marks = json.loads((BUILD / "landmarks.json").read_text()) if (BUILD / "landmarks.json").exists() else {}
+    for b in marks.get("bridges", []):
+        deck = LineString([(x - CX, CY - y) for x, y in b["path"]])
+        cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(np.asarray(deck.coords), axis=0), axis=1))]
+        for ln in lanes_:
+            near = [deck.distance(Point(*q)) < 3.0 for q in ln["p"]]
+            if sum(near) < 2:
+                continue
+            ys = [float(np.interp(deck.project(Point(*q)), cum, b["heights"])) if n else 0.0 for q, n in zip(ln["p"], near)]
+            ln["y"] = [round(y, 2) for y in np.maximum(ys, ln.get("y", 0))]
+
+
 def hidden(lanes_):
     samples = []
     for ln in lanes_:
@@ -343,6 +359,9 @@ def hidden(lanes_):
         cum = np.r_[0, np.cumsum(seg)]
         s = np.arange(0, cum[-1], STEP)
         samples.append((s, np.interp(s, cum, p[:, 0]), np.interp(s, cum, p[:, 1])))
+    # On a bridge deck a mover is in plain view: the deck itself is one of the buildings it would hide behind.
+    raised = [np.interp(s, np.r_[0, np.cumsum(np.linalg.norm(np.diff(ln["p"], axis=0), axis=1))], ln["y"]) > 0.3 if "y" in ln
+              else np.zeros(len(s), bool) for ln, (s, _, _) in zip(lanes_, samples)]
     for ln in lanes_:
         ln["h"], ln["t"] = [], []
     for look in VIEWS:
@@ -351,20 +370,57 @@ def hidden(lanes_):
         bounds = (us.min() - 2, vs.min() - 2, us.max() + 2, vs.max() + 2)
         buildings, trees = occluders(bounds, look)
         u0, _, _, v1 = bounds
-        for ln, (s, _, _), (u, v) in zip(lanes_, samples, uv):
+        for ln, (s, _, _), (u, v), up in zip(lanes_, samples, uv, raised):
             at = ((v1 - v) / RES).astype(int), ((u - u0) / RES).astype(int)
-            ln["h"].append(stretches_where(buildings[at], s))
-            ln["t"].append(stretches_where(trees[at] & ~buildings[at], s))
+            ln["h"].append(stretches_where(buildings[at] & ~up, s))
+            ln["t"].append(stretches_where(trees[at] & ~buildings[at] & ~up, s))
+
+
+def play_areas():
+    """Points every meter inside each play area, and per view which of them a building hides: a depth test against the
+    building triangles nearby, so children on a roof terrace disappear behind the higher part of the building too."""
+    marks = json.loads((BUILD / "landmarks.json").read_text()) if (BUILD / "landmarks.json").exists() else {}
+    tris = np.fromfile(BUILD / "buildings.bin", dtype=np.float32).reshape(-1, 3, 12)[..., :3].astype(np.float64)  # x, up, z
+    out = []
+    for a in marks.get("play", []):
+        poly = Polygon([(x - CX, CY - y) for x, y in a["area"]])
+        x0, z0, x1, z1 = poly.bounds
+        gx, gz = np.meshgrid(np.arange(x0 + 0.5, x1, 1.0), np.arange(z0 + 0.5, z1, 1.0))
+        inside = contains_xy(poly, gx, gz)
+        px, pz = gx[inside], gz[inside]
+        c = np.array(poly.centroid.coords[0])
+        near = tris[np.hypot(tris[..., 0] - c[0], tris[..., 2] - c[1]).min(1) < 80]
+        hid = []
+        for look in VIEWS:
+            depth = lambda x, z, y: (x * math.sin(math.radians(look)) - z * math.cos(math.radians(look))) * math.cos(math.radians(30)) - y * 0.5
+            pu, pv = screen(px, pz, a["h"] + 0.8, look)
+            pd = depth(px, pz, a["h"] + 0.8)
+            tu, tv = screen(near[..., 0], near[..., 2], near[..., 1], look)
+            td = depth(near[..., 0], near[..., 2], near[..., 1])
+            # Barycentric coordinates of every point in every triangle on screen.
+            (ua, ub, uc), (va, vb, vc) = tu.T, tv.T
+            det = (vb - vc) * (ua - uc) + (uc - ub) * (va - vc)
+            det = np.where(np.abs(det) < 1e-9, np.nan, det)
+            l1 = ((vb - vc)[None] * (pu[:, None] - uc[None]) + (uc - ub)[None] * (pv[:, None] - vc[None])) / det[None]
+            l2 = ((vc - va)[None] * (pu[:, None] - uc[None]) + (ua - uc)[None] * (pv[:, None] - vc[None])) / det[None]
+            l3 = 1 - l1 - l2
+            cover = (l1 >= 0) & (l2 >= 0) & (l3 >= 0)
+            tdepth = l1 * td[:, 0][None] + l2 * td[:, 1][None] + l3 * td[:, 2][None]
+            hid.append("".join("1" if h else "0" for h in (cover & (tdepth < pd[:, None] - 0.4)).any(1)))
+        out.append({"name": a["name"], "h": a["h"], "kids": a["kids"], "pts": [[round(float(x), 1), round(float(z), 1)] for x, z in zip(px, pz)], "hid": hid})
+        print(f"{a['name']}: {len(px)} m², hidden per view {[h.count('1') for h in hid]}")
+    return out
 
 
 def main():
     ways = list(road_ways())
     edges = list(clip(stretches(ways)))
     out = lanes(edges)
+    on_bridges(out)
     hidden(out)
     for ln in out:
         ln["p"] = [[round(float(x), 1), round(float(z), 1)] for x, z in ln["p"]]
-    (BUILD / "traffic.json").write_text(json.dumps({"views": list(VIEWS), "lanes": out, "exits": sorted(clip.exits)}, separators=(",", ":")))
+    (BUILD / "traffic.json").write_text(json.dumps({"views": list(VIEWS), "lanes": out, "exits": sorted(clip.exits), "play": play_areas()}, separators=(",", ":")))
     km = sum(np.linalg.norm(np.diff(np.array(ln["p"]), axis=0), axis=1).sum() for ln in out) / 1000
     share = sum(sum(b - a for a, b in ln["h"][0]) for ln in out) / 1000 / km
     leafy = sum(sum(b - a for a, b in ln["t"][0]) for ln in out) / 1000 / km

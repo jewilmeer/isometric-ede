@@ -49,7 +49,7 @@ for look in views:
 m.update({k: m["views"][0][k] for k in ("tiles", "objects") if k in m["views"][0]})
 json.dump(m, open(f"{site}/map.json", "w"))
 PY
-cp viewer/index.html viewer/en.json viewer/og.png data/build/places.json data/build/hotspots.json data/build/routes.json data/build/history.json data/build/traffic.json "$SITE/"
+cp viewer/index.html viewer/en.json viewer/og.png data/build/places.json data/build/hotspots.json data/build/routes.json data/build/history.json data/build/traffic.json data/build/trains.json "$SITE/"
 cp -r data/build/history "$SITE/history"
 [ -d data/build/photos ] && cp -r data/build/photos "$SITE/photos"
 cp -r viewer/music "$SITE/music"

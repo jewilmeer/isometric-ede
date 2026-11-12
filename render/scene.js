@@ -14,7 +14,7 @@ const BACKGROUND = new THREE.Color(0x20242c);
 const ROAD_ALPHA = 0.5; // marks road pixels in the color target, see makeRoads and the post pass
 
 const DATA = '/data/build';
-const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12 };
+const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14 };
 
 const rgb = (r, g, b) => new THREE.Color(r / 255, g / 255, b / 255);
 const hash = (x) => {
@@ -185,6 +185,13 @@ vec3 buildingPattern(vec3 base) {
         if (col < 0.58 || col > 1.42 || y < 1.02 || y > 3.58 || abs(y - 2.9) < 0.08) c = vFrame;
       }
       if (y < 0.5) c *= 0.8;
+    } else if (type == 13) {
+      // Bridge: smooth concrete with a joint every few meters; railings plain.
+      if (mod(vUv2.x, 6.0) < 0.12) c *= 0.9;
+    } else if (type == 14) {
+      // Brick chimney: a course line every few meters, a darker band below the top.
+      if (mod(vUv2.y, 3.2) < 0.25) c *= 0.86;
+      if (vUv2.y > vAxis - 2.5 && vUv2.y < vAxis - 1.0) c *= 0.7;
     } else if (type == 11) {
       // Lattice mast: steel cross-bracing.
       float a = fract((vUv2.x + vUv2.y) / 2.2), b = fract((vUv2.y - vUv2.x) / 2.2);

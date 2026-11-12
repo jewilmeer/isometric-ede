@@ -116,9 +116,10 @@ def main():
         extra.append([x - CX, CY - y, h, 1.2 + h * 0.15, 1.5, 0, 0.35, 0.42, 0.25, rng.random()])
     if extra:
         trees = np.concatenate([trees, np.array(extra, dtype=np.float32)])
-    # Masts show up in the canopy model as very tall, thin "trees".
+    # Masts and chimneys show up in the canopy model as very tall, thin "trees".
     lm = BUILD / "landmarks.json"
-    for m in json.loads(lm.read_text()).get("masts", []) if lm.exists() else []:
+    marks = json.loads(lm.read_text()) if lm.exists() else {}
+    for m in marks.get("masts", []) + marks.get("chimneys", []):
         trees = trees[np.hypot(trees[:, 0] - (m["x"] - CX), trees[:, 1] - (CY - m["y"])) > 6]
     trees.tofile(BUILD / "trees.bin")
     print(f"{len(trees)} trees ({len(extra)} from BGT), {int(kind.sum())} evergreen, mean radius {radius.mean():.1f} m")

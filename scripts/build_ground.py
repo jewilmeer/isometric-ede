@@ -52,6 +52,7 @@ STYLES = {
     "dirt": (178, 156, 114),
     "building": (168, 162, 150),
     "bridge": (150, 140, 126),
+    "cyclepath": (212, 118, 60),
 }
 CAT = {k: i for i, k in enumerate(STYLES)}
 WATERY = {CAT["water"]}
@@ -70,6 +71,8 @@ def style_for(coll, p):
         return "building" if p.get("type") != "bassin" else "water"
     if coll == "overbruggingsdeel":
         return "bridge"
+    if coll == "park":
+        return "grass"
     if coll == "begroeidterreindeel" or fv == "groenvoorziening":
         return {
             "grasland agrarisch": "meadow",
@@ -114,7 +117,11 @@ def style_for(coll, p):
 
 # Surfaces that are drawn as crisp polygons over the ground (see render/scene.js, makeRoads): the whole road
 # network, bridges, and paved squares and yards. Grass verges and plain yards stay part of the soft ground.
-ROAD_STYLES = {"asphalt", "motorway", "concrete_pavers", "tiles", "clinkers", "concrete", "gravel", "grass_pavers", "dirt", "sand", "bridge"}
+ROAD_STYLES = {"asphalt", "motorway", "concrete_pavers", "tiles", "clinkers", "concrete", "gravel", "grass_pavers", "dirt", "sand", "bridge",
+               "cyclepath"}
+
+# What changed after the BGT inside an area of landmarks.json "ground": bare ground and old asphalt become park grass.
+TO_PARK = {"asphalt", "sand", "dirt", "yard", "gravel", "gap"}
 PAVED_STYLES = {"asphalt", "concrete_pavers", "tiles", "clinkers", "concrete", "gravel"}
 
 
@@ -151,8 +158,54 @@ def load_polygons():
                 # Bridges sit over water and are drawn last; everything else by size, large first.
                 prio = 2 if coll == "overbruggingsdeel" else (1 if coll in ("pand", "overigbouwwerk") else 0)
                 polys.append((prio, -area, coll, f["properties"], rings))
+    polys += changed_ground()
     polys.sort(key=lambda t: (t[0], t[1]))
     return polys
+
+
+def ground_changes():
+    lm = BUILD / "landmarks.json"
+    return json.loads(lm.read_text()).get("ground", []) if lm.exists() else []
+
+
+def changed_ground():
+    """Polygons for landmarks.json "ground": each area as a lawn under everything else, and the OpenStreetMap cycle
+    paths through it, 3 m wide, which the BGT doesn't have yet."""
+    from shapely.geometry import LineString, Polygon
+
+    from geo import wgs_to_rd
+
+    out = []
+    roads = json.load(open(RAW / "osm_roads.json"))["elements"] if (RAW / "osm_roads.json").exists() else []
+    for g in ground_changes():
+        area = Polygon(g["area"])
+        out.append((-1, -area.area, "park", {"lokaal_id": g["name"]}, [list(area.exterior.coords)]))
+        for w in roads:
+            t = w.get("tags", {})
+            if w["type"] != "way" or not w.get("geometry") or t.get("highway") != "cycleway" or t.get("bridge"):
+                continue
+            line = LineString([wgs_to_rd(p["lat"], p["lon"]) for p in w["geometry"]])
+            part = line.intersection(area).buffer(1.5, cap_style="flat")
+            for poly in getattr(part, "geoms", [part]):
+                if poly.geom_type == "Polygon" and not poly.is_empty:
+                    out.append((0, -poly.area, "wegdeel", {"functie": "fietspad", "lokaal_id": f"osm{w['id']}"}, [list(poly.exterior.coords)]))
+    return out
+
+
+def changed_style(coll, props, rings, style, areas):
+    """The style of a BGT polygon that lies mostly inside a changed area, else its own."""
+    from shapely.geometry import Polygon
+
+    if coll == "park":
+        return "grass"
+    poly = Polygon(np.asarray(rings[0])[:, :2]).buffer(0)
+    if not poly.area or not any(Polygon(a["area"]).intersection(poly).area > 0.5 * poly.area for a in areas):
+        return style
+    if props.get("functie") == "spoorbaan":
+        return style
+    if coll == "wegdeel" and props.get("functie") == "fietspad":
+        return "cyclepath"
+    return "grass" if style in TO_PARK else style
 
 
 def to_px(ring):
@@ -200,12 +253,13 @@ def main():
 
     cats = np.zeros(len(polys) + 1, np.int32)
     roads = np.zeros(len(polys) + 1, bool)
+    areas = ground_changes()
     base = np.zeros((len(polys) + 1, 3), np.float32)
     stripes_dir = np.zeros(len(polys) + 1, np.float32)
     for i, (_, _, coll, props, rings) in enumerate(polys, start=1):
         # Seeded per polygon, so a field keeps its crop when the map area changes.
         rng = np.random.default_rng(int(hashlib.md5(str(props.get("lokaal_id", i)).encode()).hexdigest()[:8], 16))
-        s = style_for(coll, props)
+        s = changed_style(coll, props, rings, style_for(coll, props), areas)
         cats[i] = CAT[s]
         roads[i] = is_road(coll, s)
         c = np.array(STYLES[s], np.float32)
@@ -243,6 +297,15 @@ def main():
     cat = cats[ids]
     img = base[ids]  # (N, N, 3) float32
     road = roads[ids]
+    # Bare ground inside a changed area that no polygon of its own made park, and the grass the spring photo still
+    # shows as bare sand: lawn as well.
+    if areas:
+        mask = Image.new("1", (NX, NY), 0)
+        for g in areas:
+            ImageDraw.Draw(mask).polygon(to_px(g["area"]), fill=1)
+        bare = np.array(mask) & np.isin(cat, [CAT[k] for k in (*TO_PARK, "heath", "meadow")]) & ~road
+        cat[bare], img[bare] = CAT["grass"], np.array(STYLES["grass"], np.float32)
+        del mask, bare
     # The outer metre of a road stays clean: the photo's road edge never lines up exactly with the BGT polygon,
     # and its detail there turns a straight road edge into a blotchy one.
     road_rim = road & ~ndi.binary_erosion(road, iterations=4)

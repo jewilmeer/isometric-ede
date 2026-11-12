@@ -752,6 +752,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     fetch('routes.json', { cache: 'no-store' }).then((r) => r.json()).then(addRoutes);
     fetch('history.json', { cache: 'no-store' }).then((r) => r.json()).then(addTour);
     fetch('traffic.json', { cache: 'no-store' }).then((r) => r.json()).then(addTraffic).catch(() => {});
+    fetch('trains.json', { cache: 'no-store' }).then((r) => r.json()).then(addTrains).catch(() => {});
   });
 
   // Hover: named buildings light up and show their name. Polygons come in screen meters; turn them into image pixels.
@@ -1261,6 +1262,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
         for (let n = Math.floor((l.len / 1000) * (l[DENSITY[mode]] || 0) + Math.random()); n > 0; n--) movers.push(newMover(i, Math.random() * l.len, mode));
       }
     });
+    if (T.play) addPlay(T.play);
     for (let i = 0; i < 3; i++) spawnFlock(0.2 + Math.random() * 0.6);
     layerObjects();
     layer = document.createElement('canvas');
@@ -1399,10 +1401,300 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       const a = l.p[m.i], b = l.p[m.i + 1], seg = l.cum[m.i + 1] - l.cum[m.i] || 1;
       const t = (s - l.cum[m.i]) / seg;
       x = a[0] + (b[0] - a[0]) * t, z = a[1] + (b[1] - a[1]) * t, dx = (b[0] - a[0]) / seg, dz = (b[1] - a[1]) / seg;
+      m.lift = l.y ? l.y[m.i] + (l.y[m.i + 1] - l.y[m.i]) * t : 0;
     }
     const side = SIDE[m.mode] && l[SIDE[m.mode]];
     if (side) x -= dz * side, z += dx * side;
     return [x, z, dx, dz];
+  }
+
+  // Trains (trains.json, scripts/build_trains.py): the Intercity between Utrecht and Arnhem stops at Ede-Wageningen,
+  // the Sprinter from Arnhem and the blue Valleilijn of RRReis from Barneveld wait there a while and go back, now and
+  // then an ICE races through, and once in a long while a steam train puffs past. A train brakes for any train ahead
+  // on its track, so it waits for a platform that is still taken.
+  const YELLOW = [255, 198, 30], NSBLUE = [0, 48, 130], WINDOW = [44, 50, 64], ROOF = [150, 152, 156];
+  // Carriages: count, length and gap (m), height, top speed (m/s), acceleration, wait at the last stop and at the
+  // others (s), and the bands of colour up the side: [from, to, colour or 'win'] in meters above the rail.
+  const TRAINS = {
+    ic: { cars: 6, car: 27, gap: 0.6, h: 4.6, vmax: 39, acc: 0.5, dwell: 50,
+      bands: [[0.9, 1.3, NSBLUE], [1.3, 1.6, YELLOW], [1.6, 2.3, 'win'], [2.3, 2.7, YELLOW], [2.7, 3.5, 'win'], [3.5, 4.6, YELLOW]] },
+    sprinter: { cars: 4, car: 20, gap: 0.5, h: 3.9, vmax: 33, acc: 0.8, dwell: 110,
+      bands: [[0.9, 1.4, NSBLUE], [1.4, 1.9, YELLOW], [1.9, 2.9, 'win'], [2.9, 3.9, YELLOW]] },
+    rr: { cars: 3, car: 21, gap: 0.5, h: 3.9, vmax: 28, acc: 0.8, dwell: 130, via: 25,
+      bands: [[0.9, 1.2, [232, 236, 240]], [1.2, 1.9, [22, 86, 170]], [1.9, 2.9, 'win'], [2.9, 3.9, [22, 86, 170]]] },
+    ice: { cars: 8, car: 25, gap: 0.6, h: 3.9, vmax: 44, acc: 0.5,
+      bands: [[0.9, 1.25, [236, 236, 234]], [1.25, 1.5, [196, 22, 34]], [1.5, 1.9, [236, 236, 234]], [1.9, 2.7, 'win'], [2.7, 3.9, [236, 236, 234]]] },
+    steam: { cars: 6, car: 15, gap: 0.8, h: 3.9, vmax: 16, acc: 0.3, steam: true,
+      bands: [[0.9, 1.8, [118, 30, 34]], [1.8, 2.6, [232, 214, 170]], [2.6, 3.7, [118, 30, 34]]] },
+  };
+  // How often each service runs (s), which routes it takes in turn, and the share of its turns it actually comes.
+  const SERVICES = [
+    { train: 'ic', every: 150, at: 5, routes: [['ic_e'], ['ic_w']] },
+    { train: 'sprinter', every: 260, at: 30, routes: [['sprinter_in', 'sprinter_out']] },
+    { train: 'rr', every: 280, at: 60, routes: [['rr_in', 'rr_out']] },
+    { train: 'ice', every: 430, at: 110, routes: [['thru_e'], ['thru_w']] },
+    { train: 'steam', every: 900, at: 400, chance: 0.4, routes: [['thru_e'], ['thru_w']] },
+  ];
+  let rails = null, trains = [], puffs = [], trainView = 0, trainClock = 0;
+  const lengthOf = (T) => T.cars * T.car + (T.cars - 1) * T.gap;
+
+  function addTrains(data) {
+    trainView = viewIn(data.views);
+    onView.push(() => (trainView = viewIn(data.views)));
+    rails = {};
+    for (const [key, r] of Object.entries(data.routes)) {
+      const cum = [0];
+      for (let i = 1; i < r.p.length; i++) cum.push(cum[i - 1] + Math.hypot(r.p[i][0] - r.p[i - 1][0], r.p[i][1] - r.p[i - 1][1]));
+      rails[key] = { ...r, key, cum, len: cum[cum.length - 1] };
+    }
+    for (const sv of SERVICES) sv.next = sv.at, sv.turn = Math.floor(Math.random() * sv.routes.length);
+    // The map opens with a few trains already out: Intercities on their way to the station, the Sprinter and the
+    // Valleilijn waiting at their platforms.
+    const start = (type, legs, s, v, stop = 0, wait = 0) => trains.push({ type, legs, leg: 0, route: legs[0], s, v, stop, wait, puff: 0 });
+    const L = (t) => lengthOf(TRAINS[t]);
+    start('ic', ['ic_e'], rails.ic_e.stops[0].s + L('ic') / 2 - 500 - Math.random() * 400, 25);
+    start('ic', ['ic_w'], rails.ic_w.stops[0].s + L('ic') / 2 + 200 + Math.random() * 300, 30, 1);
+    start('sprinter', ['sprinter_in', 'sprinter_out'], rails.sprinter_in.len, 0, 0, Math.random() * 60);
+    start('rr', ['rr_in', 'rr_out'], rails.rr_in.len, 0, 1, Math.random() * 60);
+  }
+
+  // A point on a route, s meters along it (clamped to its ends).
+  function railAt(r, s) {
+    const c = r.cum;
+    s = Math.max(0, Math.min(r.len, s));
+    let lo = 0, hi = c.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (c[mid] <= s) lo = mid; else hi = mid; }
+    const t = (s - c[lo]) / (c[hi] - c[lo] || 1);
+    return [r.p[lo][0] + (r.p[hi][0] - r.p[lo][0]) * t, r.p[lo][1] + (r.p[hi][1] - r.p[lo][1]) * t];
+  }
+
+  // Each carriage as it stands: center, heading (front to back between its bogies), and how much of it shows.
+  function carsOf(tr) {
+    const T = TRAINS[tr.type], r = rails[tr.route], out = [];
+    for (let k = 0; k < T.cars; k++) {
+      const len = tr.type === 'steam' ? [12, 7, 15, 15, 15, 15][k] : T.car;
+      const front = tr.s - (tr.type === 'steam' ? [0, 12.8, 20.6, 36.4, 52.2, 68][k] : k * (T.car + T.gap));
+      const back = front - len;
+      if (back > r.len || front < 0) continue;
+      const a = railAt(r, front), b = railAt(r, back);
+      const l = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1;
+      out.push({ tr, k, len, x: (a[0] + b[0]) / 2, z: (a[1] + b[1]) / 2, dx: (a[0] - b[0]) / l, dz: (a[1] - b[1]) / l, s0: back, s1: front });
+    }
+    return out;
+  }
+
+  function stepTrains(dt) {
+    if (!rails) return;
+    trainClock += dt;
+    for (const sv of SERVICES) {
+      if (trainClock < sv.next) continue;
+      const keys = sv.routes[sv.turn % sv.routes.length];
+      const r = rails[keys[0]];
+      // Only onto a free track; otherwise try again a little later.
+      const free = !trains.some((o) => carsOf(o).some((c) => Math.hypot(...railAt(r, 150).map((v, i) => v - [c.x, c.z][i])) < 160));
+      if (!free) { sv.next = trainClock + 15; continue; }
+      sv.next = trainClock + sv.every * (0.85 + Math.random() * 0.3), sv.turn++;
+      if (sv.chance && Math.random() > sv.chance) continue;
+      trains.push({ type: sv.train, legs: keys, leg: 0, route: keys[0], s: 0, v: TRAINS[sv.train].vmax * 0.8, stop: 0, wait: 0, puff: 0 });
+    }
+    // Where every carriage is, to look out for along the track ahead.
+    const occupied = trains.map((tr) => carsOf(tr).flatMap((c) => [railAt(rails[tr.route], c.s1), [c.x, c.z], railAt(rails[tr.route], c.s0)]));
+    trains.forEach((tr, ti) => {
+      const T = TRAINS[tr.type], r = rails[tr.route], L = lengthOf(T);
+      let want = T.vmax;
+      const stop = r.stops[tr.stop];
+      if (stop) {
+        const at = Math.min(r.len, stop.s + L / 2), d = at - tr.s;
+        want = Math.min(want, Math.sqrt(2 * T.acc * Math.max(0, d)) + (d > 0.5 ? 0.6 : 0));
+        if (d < 0.6 && tr.v < 0.4) {
+          tr.v = 0, want = 0, tr.wait += dt;
+          const last = tr.stop === r.stops.length - 1;
+          if (tr.wait > (last ? T.dwell : T.via || 30) && clearAhead(tr, ti, occupied, 120)) {
+            tr.wait = 0, tr.stop++;
+            if (last && tr.leg + 1 < tr.legs.length) {
+              // Back the way it came: the last carriage leads now.
+              tr.leg++, tr.route = tr.legs[tr.leg], tr.s = rails[tr.route].front, tr.stop = 0;
+            }
+          }
+        }
+      }
+      // Brake for the nearest carriage of another train on the track ahead.
+      const look = (tr.v * tr.v) / (2 * T.acc) + 80;
+      for (let d = 10; d < look; d += 10) {
+        const s = tr.s + d;
+        if (s > rails[tr.route].len) break;
+        const [px, pz] = railAt(rails[tr.route], s);
+        if (occupied.some((pts, oi) => oi !== ti && pts.some(([x, z]) => (x - px) ** 2 + (z - pz) ** 2 < 6.5))) {
+          want = Math.min(want, Math.sqrt(2 * T.acc * Math.max(0, d - 40)));
+          break;
+        }
+      }
+      const acc = want > tr.v ? T.acc : 1.2;
+      tr.v += Math.max(-acc * dt, Math.min(acc * dt, want - tr.v));
+      tr.s += tr.v * dt;
+      if (T.steam && tr.v > 0.5 && (tr.puff -= dt * (0.6 + tr.v / 8)) < 0) {
+        tr.puff = 0.35;
+        const [c] = carsOf(tr);
+        if (c && c.k === 0) puffs.push({ x: c.x + c.dx * 4.4, z: c.z + c.dz * 4.4, h: 4.3, r: 0.6, age: 0, vx: -c.dx * 0.3, vz: -c.dz * 0.3 });
+      }
+    });
+    trains = trains.filter((tr) => tr.s - lengthOf(TRAINS[tr.type]) < rails[tr.route].len);
+    for (const p of puffs) p.age += dt, p.h += dt * 1.1, p.r += dt * 0.5, p.x += p.vx * dt + dt * 0.4, p.z += p.vz * dt + dt * 0.25;
+    puffs = puffs.filter((p) => p.age < 7);
+  }
+
+  // Nothing of another train within `far` meters ahead on this train's track.
+  function clearAhead(tr, ti, occupied, far) {
+    const r = rails[tr.legs[tr.leg + 1] && tr.stop === rails[tr.route].stops.length - 1 ? tr.legs[tr.leg + 1] : tr.route];
+    const from = r === rails[tr.route] ? tr.s : r.front;
+    for (let d = 10; d < far; d += 10) {
+      const [px, pz] = railAt(r, from + d);
+      if (occupied.some((pts, oi) => oi !== ti && pts.some(([x, z]) => (x - px) ** 2 + (z - pz) ** 2 < 6.5))) return false;
+    }
+    return true;
+  }
+
+  // The carriages to draw, as movers: behind a building or under a tree with any part, they go under the objects.
+  function trainMovers() {
+    const out = [];
+    if (!rails) return out;
+    for (const tr of trains) {
+      const r = rails[tr.route], h = r.h[trainView], t = r.t[trainView];
+      const within = (list, at) => list && list.some(([a, b]) => at >= a && at <= b);
+      for (const c of carsOf(tr)) {
+        const samples = [c.s0, (c.s0 + c.s1) / 2, c.s1].filter((s) => s >= 0 && s <= r.len);
+        const hid = samples.some((s) => within(h, s)), leafy = samples.some((s) => within(t, s));
+        c.train = true, c.behind = hid || leafy;
+        c.alpha = objectsLayer ? 1 : samples.every((s) => within(h, s)) ? 0 : leafy ? 0.55 : 1;
+        out.push(c);
+      }
+    }
+    return out;
+  }
+
+  function drawCar(ctx, c, x, z, dx, dz) {
+    const T = TRAINS[c.tr.type], half = c.len / 2, w = 1.45;
+    const boxes = [[-half + 1.2, half - 1.2, 1.25, 0.2, 0.95, DARK]];
+    const cab = c.k === 0 || c.k === T.cars - 1;
+    if (T.steam && c.k === 0) {
+      // Locomotive: frame and red buffer beam, a black boiler with a chimney and dome, the cab at the back.
+      boxes.push([-half, half, 1.4, 0.7, 1.35, [34, 32, 32]], [half - 0.3, half, 1.45, 0.75, 1.25, [176, 30, 28]],
+        [-half + 3.6, half - 0.4, 0.95, 1.35, 3.0, [28, 28, 30]], [half - 2.0, half - 1.2, 0.32, 3.0, 4.2, [24, 24, 26]],
+        [-0.4, 0.6, 0.45, 3.0, 3.6, [44, 40, 36]], [-half, -half + 3.6, 1.4, 1.35, 3.6, [28, 28, 30]], [-half - 0.1, -half + 3.8, 1.5, 3.6, 3.8, [20, 20, 22]]);
+    } else if (T.steam && c.k === 1) {
+      boxes.push([-half, half, 1.4, 0.7, 2.7, [30, 30, 32]], [-half + 0.5, half - 0.5, 1.2, 2.7, 3.0, [52, 46, 40]]);
+    } else {
+      for (const [h0, h1, col] of T.bands) boxes.push([-half, half, w, h0, h1, col === 'win' ? (cab ? 'cab' : WINDOW) : col]);
+      boxes.push([-half + 0.4, half - 0.4, w - 0.2, T.bands[T.bands.length - 1][1], T.bands[T.bands.length - 1][1] + 0.25, ROOF]);
+    }
+    drawBoxes(ctx, x, z, dx, dz, boxes, () => WINDOW, { outline: true });
+  }
+
+  function drawPuffs(ctx, inView) {
+    for (const p of puffs) {
+      if (!inView(p.x, p.z, p.h)) continue;
+      const [cx, cy] = toPx(p.x, p.z, p.h);
+      ctx.beginPath();
+      ctx.arc(cx, cy, p.r * M.scale * 0.8, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(236,236,232,${(0.75 * (1 - p.age / 7)).toFixed(3)})`;
+      ctx.fill();
+    }
+  }
+
+  // Children playing (traffic.json "play"): on the schoolyard west of the old Enka canteen, and on the terrace of the
+  // after-school care on its top floor. They run somewhere, stand a moment, play tag, and some hop about. On the
+  // schoolyard two of them turn a skipping rope and a third jumps in time.
+  const SHIRTS = [[226, 62, 52, 3], [52, 120, 210, 3], [250, 200, 40, 3], [70, 170, 90, 2], [236, 120, 170, 2], [130, 80, 190, 1],
+    [240, 140, 40, 2], [236, 236, 230, 1]];
+  let kids = [];
+  function addPlay(areas) {
+    for (const a of areas) {
+      for (let n = 0; n < a.kids; n++) {
+        const [x, z] = a.pts[Math.floor(Math.random() * a.pts.length)];
+        kids.push({ kid: true, area: a, x, z, tx: x, tz: z, dx: 1, dz: 0, v: 0, wait: Math.random() * 3, chase: null, phase: Math.random() * 7,
+          size: 0.62 + Math.random() * 0.2, hopper: Math.random() < 0.25, alpha: 1,
+          shirt: tone(SHIRTS), legs: tone(TROUSERS), skin: tone(SKIN), hair: tone(HEADS), stride: 0 });
+      }
+      if (a.h === 0 && a.kids >= 8) {
+        // The rope: its middle, which way it runs, and the three children at it.
+        const team = kids.slice(-3), [x, z] = a.pts[Math.floor(a.pts.length / 2)], ang = Math.random() * Math.PI;
+        const rope = { x, z, ax: Math.cos(ang), az: Math.sin(ang), half: 1.7 };
+        team.forEach((c, i) => {
+          const side = [-1, 1, 0][i];
+          c.rope = { ...rope, side }, c.x = x + rope.ax * rope.half * side, c.z = z + rope.az * rope.half * side, c.wait = 0, c.v = 0;
+          c.dx = side ? -rope.ax * side : -rope.az, c.dz = side ? -rope.az * side : rope.ax, c.hopper = false;
+        });
+      }
+    }
+  }
+  const ropeAngle = () => clock * 7;
+
+  function stepKids(dt) {
+    for (const c of kids) {
+      if (c.rope) {
+        hideKid(c);
+        continue;
+      }
+      if (c.chase && (c.chase.t -= dt) > 0) [c.tx, c.tz] = [c.chase.kid.x, c.chase.kid.z];
+      else c.chase = null;
+      const ddx = c.tx - c.x, ddz = c.tz - c.z, d = Math.hypot(ddx, ddz);
+      if (c.wait > 0) {
+        c.wait -= dt, c.v = 0;
+      } else if (d < (c.chase ? 0.6 : 0.3)) {
+        c.wait = c.chase ? 0.4 : 0.5 + Math.random() * 3, c.v = 0;
+        const mates = kids.filter((o) => o !== c && o.area === c.area);
+        if (mates.length && Math.random() < 0.3) c.chase = { kid: mates[Math.floor(Math.random() * mates.length)], t: 3 + Math.random() * 3 };
+        else [c.tx, c.tz] = c.area.pts[Math.floor(Math.random() * c.area.pts.length)];
+        c.run = c.chase || Math.random() < 0.6;
+      } else {
+        c.v = c.run ? 2.4 + c.size : 1.0;
+        const step = Math.min(d, c.v * dt);
+        c.dx = ddx / d, c.dz = ddz / d, c.x += c.dx * step, c.z += c.dz * step;
+        c.stride += (step / (c.run ? 0.7 : 0.45)) * Math.PI;
+      }
+      hideKid(c);
+    }
+  }
+
+  // Hidden by a building when the spot it stands on is (the nearest of the area's points).
+  function hideKid(c) {
+    let best = 0, bd = Infinity;
+    c.area.pts.forEach(([x, z], i) => { const e = (x - c.x) ** 2 + (z - c.z) ** 2; if (e < bd) bd = e, best = i; });
+    c.behind = c.area.hid[laneView][best] === '1';
+    c.alpha = objectsLayer || !c.behind ? 1 : 0;
+  }
+
+  function drawKid(ctx, c, x, z, dx, dz) {
+    const k = c.size, swing = Math.sin(c.stride) * 0.12 * Math.min(1, c.v);
+    let hop = c.hopper && c.v === 0 ? Math.abs(Math.sin(clock * 5 + c.phase)) * 0.25 : 0;
+    // The jumper is up whenever the rope swings under her feet.
+    if (c.rope && !c.rope.side) hop = 0.32 * Math.max(0, -Math.sin(ropeAngle())) ** 2;
+    if (c.rope && !c.rope.side) drawRope(ctx, c.rope, c.area.h, true);
+    drawBoxes(ctx, x, z, dx, dz, [
+      [swing - 0.06, swing + 0.06, 0.05, hop, 0.75 * k + hop, c.legs, -0.08],
+      [-swing - 0.06, -swing + 0.06, 0.05, hop, 0.75 * k + hop, c.legs, 0.08],
+      [-0.1, 0.1, 0.16, 0.75 * k + hop, 1.3 * k + hop, c.shirt],
+      [-0.08, 0.08, 0.08, 1.3 * k + hop, 1.52 * k + hop, c.skin],
+      [-0.09, 0.05, 0.09, 1.5 * k + hop, 1.6 * k + hop, c.hair],
+    ], null, { lift: c.area.h });
+    if (c.rope && !c.rope.side) drawRope(ctx, c.rope, c.area.h, false);
+  }
+
+  // The rope between the two turners' hands, swinging round the line between them: drawn half before the jumper
+  // (when it is behind her) and half after.
+  function drawRope(ctx, r, lift, back) {
+    const th = ropeAngle(), R = 0.95, hand = lift + 0.85;
+    const nx = -r.az, nz = r.ax, out = Math.cos(th) * R;
+    // Away from the camera is the side with the larger depth.
+    if ((depthOf(nx * out, nz * out) > 0) !== back) return;
+    const a = toPx(r.x - r.ax * (r.half - 0.3), r.z - r.az * (r.half - 0.3), hand), b = toPx(r.x + r.ax * (r.half - 0.3), r.z + r.az * (r.half - 0.3), hand);
+    const mid = toPx(r.x + nx * out, r.z + nz * out, hand + Math.sin(th) * R);
+    ctx.beginPath();
+    ctx.moveTo(a[0], a[1]);
+    ctx.quadraticCurveTo(2 * mid[0] - (a[0] + b[0]) / 2, 2 * mid[1] - (a[1] + b[1]) / 2, b[0], b[1]);
+    ctx.lineWidth = 0.5;
+    ctx.strokeStyle = 'rgba(236,60,90,0.95)';
+    ctx.stroke();
   }
 
   // Birds: now and then a flock of geese crosses high up in a V, mostly south-west this time of year, and a few smaller
@@ -1481,16 +1773,17 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
 
   // Boxes in map pixels: their shadow, an outline if asked, then the faces that look toward the camera (south-west).
   // A box is [from, to along the heading, half width, bottom, top, color or role, how far right of the center].
-  function drawBoxes(ctx, x, z, dx, dz, list, colorOf, { sort = false, outline = false } = {}) {
+  // `lift` stands the boxes on a floor that high: a bridge deck, a roof terrace.
+  function drawBoxes(ctx, x, z, dx, dz, list, colorOf, { sort = false, outline = false, lift = 0 } = {}) {
     const nx = -dz, nz = dx; // to the right of the heading
     const boxes = list.map(([f0, f1, w, h0, h1, role, right = 0]) => {
       const g = (f, s) => [x + dx * f + nx * (s + right), z + dz * f + nz * (s + right)];
       const mf = (f0 + f1) / 2;
-      return { corners: [g(f0, -w), g(f1, -w), g(f1, w), g(f0, w)], h0, h1, role, depth: depthOf(dx * mf + nx * right, dz * mf + nz * right) };
+      return { corners: [g(f0, -w), g(f1, -w), g(f1, w), g(f0, w)], h0: h0 + lift, h1: h1 + lift, role, depth: depthOf(dx * mf + nx * right, dz * mf + nz * right) };
     });
     const ground = [], all = [];
     for (const b of boxes) for (const [gx, gz] of b.corners) {
-      ground.push(toPx(gx, gz, 0), toPx(gx + SHADOW[0] * b.h1, gz + SHADOW[1] * b.h1, 0));
+      ground.push(toPx(gx, gz, lift), toPx(gx + SHADOW[0] * (b.h1 - lift), gz + SHADOW[1] * (b.h1 - lift), lift));
       all.push(toPx(gx, gz, b.h0), toPx(gx, gz, b.h1));
     }
     poly(ctx, hull(ground), 'rgba(16,20,30,0.28)');
@@ -1515,9 +1808,11 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   }
 
   function drawMover(ctx, m, x, z, dx, dz) {
+    if (m.train) return drawCar(ctx, m, x, z, dx, dz);
+    if (m.kid) return drawKid(ctx, m, x, z, dx, dz);
     if (m.mode === WALK) return drawWalker(ctx, m, x, z, dx, dz);
     const V = VEHICLES[m.type];
-    drawBoxes(ctx, x, z, dx, dz, V.boxes, (role) => (role === 'dark' ? DARK : role === 'load' ? m.load : m.paint), { sort: V.sort, outline: !V.bike });
+    drawBoxes(ctx, x, z, dx, dz, V.boxes, (role) => (role === 'dark' ? DARK : role === 'load' ? m.load : m.paint), { sort: V.sort, outline: !V.bike, lift: m.lift });
   }
 
   // A walker: legs that step, a coat and a head. Beside them a companion, or ahead a dog on a lead that drifts from
@@ -1534,7 +1829,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
         [-0.12, 0.12, 0.2, 0.8 + lift, 1.4 + lift, p.coat],
         [-0.09, 0.09, 0.09, 1.42 + lift, 1.62 + lift, p.skin],
         [-0.1, 0.06, 0.1, 1.6 + lift, 1.68 + lift, p.hair],
-      ])];
+      ], null, { lift: m.lift })];
     });
     let lead = null;
     if (m.dog) {
@@ -1551,8 +1846,8 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
         [-0.34 * k, 0.28 * k, 0.11 * k, 0.22 * k, 0.48 * k, d.coat],
         [-0.44 * k, -0.33 * k, 0.03 * k, 0.4 * k, 0.56 * k, d.coat],
         [0.24 * k, 0.46 * k, 0.085 * k, 0.36 * k - nod, 0.6 * k - nod, d.coat],
-      ])]);
-      lead = [toPx(x + nx * 0.25 + dx * 0.15, z + nz * 0.25 + dz * 0.15, 0.9), toPx(gx + hx * 0.26 * k, gz + hz * 0.26 * k, 0.5 * k)];
+      ], null, { lift: m.lift })]);
+      lead = [toPx(x + nx * 0.25 + dx * 0.15, z + nz * 0.25 + dz * 0.15, 0.9 + (m.lift || 0)), toPx(gx + hx * 0.26 * k, gz + hz * 0.26 * k, 0.5 * k + (m.lift || 0))];
     }
     parts.sort((a, b) => b[0] - a[0]);
     for (const [, draw] of parts) draw();
@@ -1614,6 +1909,12 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       const [x, z, dx, dz] = place(m);
       if (inView(x, z, 0)) (objectsLayer && m.behind ? behind : front).push([depthOf(x, z), m, x, z, dx, dz]);
     }
+    for (const c of trainMovers()) {
+      if (c.alpha > 0.01 && inView(c.x, c.z, 0)) (objectsLayer && c.behind ? behind : front).push([depthOf(c.x, c.z), c, c.x, c.z, c.dx, c.dz]);
+    }
+    if (k >= 0.35) for (const c of kids) {
+      if (c.alpha > 0.01 && inView(c.x, c.z, c.area.h)) (objectsLayer && c.behind ? behind : front).push([depthOf(c.x, c.z), c, c.x, c.z, c.dx, c.dz]);
+    }
     paint(ctx, b, k, front, inView);
   }
 
@@ -1636,6 +1937,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       drawMover(target, m, x, z, dx, dz);
     }
     target.globalAlpha = 1;
+    if (inView) drawPuffs(target, inView);
     if (inView) for (const f of flocks) for (const bird of f.birds) drawBird(target, f, bird, inView);
     if (k > 1) {
       ctx.imageSmoothingEnabled = false;
@@ -1730,6 +2032,16 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       blob(ctx, BEAM, x + dx * (half + 5), z + dz * (half + 5), 0, 4.5, 0.32 * a, true);
       blob(ctx, BEAM, x + dx * (half + 12), z + dz * (half + 12), 0, 6, 0.16 * a, true);
     }
+    for (const c of trainMovers()) {
+      if (c.behind || !inView(c.x, c.z)) continue;
+      const nx = -c.dz, nz = c.dx, half = c.len / 2, T = TRAINS[c.tr.type];
+      if (c.k === 0) {
+        for (const sd of [-0.9, 0.9]) blob(ctx, BEAM, c.x + c.dx * half + nx * sd, c.z + c.dz * half + nz * sd, 1.0, 0.6, 1);
+        blob(ctx, BEAM, c.x + c.dx * (half + 14), c.z + c.dz * (half + 14), 0, 8, 0.25, true);
+      }
+      if (c.k === T.cars - 1) for (const sd of [-0.9, 0.9]) blob(ctx, REAR, c.x - c.dx * half + nx * sd, c.z - c.dz * half + nz * sd, 1.0, 0.5, 0.9);
+      if (!T.steam || c.k > 1) for (let f = -half + 3; f < half - 2; f += 5) blob(ctx, LAMP, c.x + c.dx * f, c.z + c.dz * f, 2.4, 1.6, 0.35);
+    }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
   }
@@ -1763,6 +2075,8 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     const dt = Math.min(0.1, (t - (lastFrame || t)) / 1000);
     lastFrame = t;
     step(dt);
+    stepTrains(dt);
+    stepKids(dt);
     stepBirds(dt);
     clock += dt;
     const had = behind.length;

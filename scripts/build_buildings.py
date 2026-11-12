@@ -225,6 +225,62 @@ def add_masts(verts, meta, masts):
         emit(verts, frustum(bot, top, 0.0, m["height"]), bi, 0.0, center_u=True)
 
 
+def add_chimneys(verts, meta, footprints, chimneys):
+    """Round brick chimneys, tapering to the top, with a dark opening."""
+    for c in chimneys:
+        bot = ngon_ring(c["x"], c["y"], c["r0"], 16, 0.0)
+        top = ngon_ring(c["x"], c["y"], c["r1"], 16, 0.0)
+        bi = part(meta, f"chimney-{c['x']:.0f}", "chimney", 0.0, c["height"], c["wall"], (44, 38, 36), param=c["height"])
+        emit(verts, frustum(bot, top, 0.0, c["height"]), bi, 0.0, center_u=True)
+        footprints.append([[round(x - CX, 2), round(CY - y, 2)] for x, y in bot])
+
+
+def ribbon(path, half):
+    """Left and right edges of a polyline widened by `half` meters on each side, mitred at the bends."""
+    p = np.asarray(path, dtype=np.float64)
+    seg = np.diff(p, axis=0)
+    seg /= np.linalg.norm(seg, axis=1, keepdims=True)
+    nrm = np.stack([-seg[:, 1], seg[:, 0]], axis=1)  # to the left in RD (y north)
+    vn = np.vstack([nrm[:1], nrm[:-1] + nrm[1:], nrm[-1:]])
+    vn /= np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-9)
+    cos = np.r_[1.0, np.einsum("ij,ij->i", vn[1:-1], nrm[1:]), 1.0]
+    off = vn * (half / np.clip(cos, 0.5, 1.0))[:, None]
+    return p + off, p - off
+
+
+def add_bridges(verts, meta, bridges):
+    """Bridges for cyclists and walkers: a deck that ramps up from the ground at both ends, railings on both sides,
+    columns under it, open over the tracks."""
+    tri = lambda a, b, c: [np.array([a, b, c])]
+    for b in bridges:
+        path, hs = np.asarray(b["path"], dtype=np.float64), np.asarray(b["heights"])
+        cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
+        s0, s1, H = cum[b["span"][0]], cum[b["span"][1]], b["height"]
+        L, R = ribbon(path, b["width"] / 2)
+        deck = part(meta, f"bridge-{b['name']}", "bridge", 0.0, H, b["wall"], b["deck"])
+        rail = part(meta, f"bridge-{b['name']}-rail", "bridge", 0.0, H + 1.1, b["rail"], b["rail"])
+        surf, rails = [], []
+        for i in range(len(path) - 1):
+            h0, h1 = hs[i], hs[i + 1]
+            l0, l1, r0, r1 = (*L[i], h0), (*L[i + 1], h1), (*R[i], h0), (*R[i + 1], h1)
+            surf += [(2, tri(l0, r0, r1)), (2, tri(l0, r1, l1))]
+            # The edge of the deck, 0.8 m thick, down to the ground where the ramp is low. Each wall runs with its
+            # outside on the right, as in extrude().
+            for a, c, ha, hc in ((L[i + 1], L[i], h1, h0), (R[i], R[i + 1], h0, h1)):
+                lo_a, lo_c = (0.0 if ha < 2.0 else ha - 0.8), (0.0 if hc < 2.0 else hc - 0.8)
+                surf.append((1, [np.array([(*a, lo_a), (*c, lo_c), (*c, hc), (*a, ha)])]))
+                rails.append((1, [np.array([(*a, ha), (*c, hc), (*c, hc + 1.1), (*a, ha + 1.1)])]))
+        # Columns every 12 m where the deck is high, but none on the tracks.
+        for s in np.arange(6, cum[-1], 12.0):
+            h = float(np.interp(s, cum, hs))
+            if h < 2.0 or s0 - 4 < s < s1 + 4:
+                continue
+            x, y = np.interp(s, cum, path[:, 0]), np.interp(s, cum, path[:, 1])
+            surf += extrude([rect_ring(x, y, 0.8, 0.8, 0.0)], 0.0, h - 0.8)
+        emit(verts, surf, deck, 0.0)
+        emit(verts, rails, rail, 0.0)
+
+
 def greenhouse_height(year):
     # Older Venlo greenhouses are lower; modern ones have a 5-6 m gutter.
     return 3.6 if (year or 0) < 1985 else 5.2
@@ -304,6 +360,8 @@ def main():
             add_landmark_parts(verts, meta, parent_id, lm, ground, long_axis(fp), roof_tris)
     add_extras(verts, meta, footprints, aerial)
     add_masts(verts, meta, landmarks.get("masts", []))
+    add_chimneys(verts, meta, footprints, landmarks.get("chimneys", []))
+    add_bridges(verts, meta, landmarks.get("bridges", []))
     texture_roofs(aerial, meta)
     arr = np.concatenate(verts).astype(np.float32)
     arr.tofile(BUILD / "buildings.bin")

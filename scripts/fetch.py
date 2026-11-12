@@ -227,9 +227,21 @@ out geom;"""
     overpass(out, q, "roads and paths for traffic")
 
 
+def fetch_rail():
+    """The railway tracks, platforms and stations, for the trains."""
+    out = RAW / "osm_rail.json"
+    if out.exists():
+        return
+    bbox = osm_bbox()
+    q = f"""[out:json][timeout:120];
+( way["railway"="rail"]({bbox}); way["railway"="platform"]({bbox}); node["railway"~"^(station|halt)$"]({bbox}); );
+out geom tags;"""
+    overpass(out, q, "railway tracks")
+
+
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
-    jobs = [fetch_3dbag, fetch_addresses, fetch_osm, fetch_routes, fetch_roads, *(lambda c=c: fetch_bgt(c) for c in BGT_COLLECTIONS)]
+    jobs = [fetch_3dbag, fetch_addresses, fetch_osm, fetch_routes, fetch_roads, fetch_rail, *(lambda c=c: fetch_bgt(c) for c in BGT_COLLECTIONS)]
     jobs += [lambda c=c, i=i, j=j: fetch_ahn(c, i, j) for c in ("dsm_05m", "dtm_05m") for i in range(NX) for j in range(NY)]
     jobs += [lambda i=i, j=j: fetch_aerial(i, j) for i in range(NX) for j in range(NY)]
     with ThreadPoolExecutor(8) as pool:
