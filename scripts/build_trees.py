@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["numpy", "scipy", "scikit-image", "tifffile", "imagecodecs", "pillow"]
+# dependencies = ["numpy", "scipy", "scikit-image", "tifffile", "imagecodecs", "pillow", "shapely"]
 # ///
 """Find individual trees in the AHN canopy height model.
 
@@ -18,17 +18,18 @@ from scipy import ndimage as ndi
 from skimage.segmentation import watershed
 
 from aerial import load_aerial
-from config import BUILD, CHUNK, CX, CY, GROUND_RES, NX, NY, RAW, XMIN, YMAX
+from era import AHN
+from config import ERA, BUILD, CHUNK, CX, CY, GROUND_RES, NX, NY, RAW, XMIN, YMAX
 
 RES = 0.5
 
 
-def mosaic(cov):
+def mosaic(cov, source=AHN):
     px = int(CHUNK / RES)
     out = np.full((NY * px, NX * px), np.nan, dtype=np.float32)
     for ix in range(NX):
         for iy in range(NY):
-            a = tifffile.imread(RAW / "ahn" / f"{cov}_{ix}_{iy}.tif").astype(np.float32)
+            a = tifffile.imread(source / f"{cov}_{ix}_{iy}.tif").astype(np.float32)
             a[(a > 1000) | (a < -100)] = np.nan
             row = (NY - 1 - iy) * px
             out[row : row + px, ix * px : ix * px + px] = a[:px, :px]
@@ -55,6 +56,23 @@ def main():
     dtm = fill_nearest(mosaic("dtm_05m"))
     chm = np.nan_to_num(dsm - dtm, nan=0.0)
     chm[chm < 0] = 0
+    # Where the era's AHN measured nothing (blind.json, written by build_buildings.py: the barracks terrain in AHN2),
+    # the trees of today stand in for those of then, except where the place has been rebuilt since (era.changed).
+    blind = BUILD / "blind.json"
+    if ERA is not None and blind.exists():
+        from shapely.geometry import Polygon
+        from shapely.ops import unary_union
+
+        from era import changed
+
+        area = unary_union([Polygon(r).buffer(0) for r in json.loads(blind.read_text())]).difference(changed())
+        img = Image.new("L", (chm.shape[1], chm.shape[0]), 0)
+        for p in getattr(area, "geoms", [area]):
+            if p.geom_type == "Polygon" and not p.is_empty:
+                ImageDraw.Draw(img).polygon([((x - XMIN) / RES, (YMAX - y) / RES) for x, y in p.exterior.coords], fill=255)
+        inside = np.array(img) > 0
+        now = mosaic("dsm_05m", RAW / "ahn") - fill_nearest(mosaic("dtm_05m", RAW / "ahn"))
+        chm[inside] = np.clip(np.nan_to_num(now[inside], nan=0.0), 0, None)
     chm[footprint_mask(chm.shape, 1.0)] = 0
     np.save(BUILD / "chm.npy", chm.astype(np.float16))
 
@@ -101,9 +119,9 @@ def main():
         [wx - CX, CY - wy, hs, radius, base, kind, r / 255, g / 255, b / 255, rng.random(len(hs))], -1
     ).astype(np.float32)
 
-    # Municipal trees from the BGT that the canopy model missed (young street trees).
-    bgt = json.load(open(RAW / "bgt_vegetatieobject_punt.geojson"))["features"]
-    pts = np.array([f["geometry"]["coordinates"][:2] for f in bgt])
+    # Municipal trees from the BGT that the canopy model missed (young street trees); today's, so not in an earlier era.
+    bgt = json.load(open(RAW / "bgt_vegetatieobject_punt.geojson"))["features"] if ERA is None else []
+    pts = np.array([f["geometry"]["coordinates"][:2] for f in bgt]).reshape(-1, 2)
     have = np.zeros(chm.shape, bool)
     have[ys, xs] = True
     have = ndi.binary_dilation(have, iterations=int(3 / RES))

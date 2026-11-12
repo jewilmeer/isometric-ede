@@ -1,11 +1,41 @@
 """Shared settings: the area we render, in RD New (EPSG:28992) meters."""
 
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
-BUILD = ROOT / "data" / "build"
+
+# The year the map shows: unset for now, or one of ERAS (ERA=2009 ./build.sh). Each era builds into its own folder.
+ERA = os.environ.get("ERA") or None
+BUILD = ROOT / "data" / ("build" if ERA is None else f"build-{ERA}")
+NOW = ROOT / "data" / "build"
+
+# The years the map can also show, and what they are made of:
+#   ahn2       heights and trees from AHN2 (data/raw/ahn2, 2007-2012) instead of the current AHN
+#   built      only 3D BAG buildings from this year or before; what has been demolished since comes from AHN2
+#   bare       where the ground was bare then (scripts/build_ground.py paints it sand): RD box (xmin, ymin, xmax, ymax)
+#   topo       the buildings demolished since come from the Kadaster's topographic map of this year (data/raw/topo<year>,
+#              scripts/topo1987_fetch.py) instead of from AHN2
+#   topo_blind where AHN2 measured nothing (the military terrain round the barracks), the buildings demolished since
+#              come from the topographic map of this year instead, and the trees from today's AHN
+#   osm        "2012": also the buildings in OpenStreetMap of 2012 (data/raw/osm_buildings-2012.json) that nothing else
+#              found, such as the old station
+#   osm_area   an RD box where those count too although nothing of today's 3D BAG marks it as changed (the station)
+#   paving     meters of paving round those buildings in the changed area (default 6; 15 where AHN2 is blind)
+ERAS = {
+    "2009": {"label": "2009", "ahn2": True, "built": 2009, "bare": (174750, 448100, 175500, 448700), "topo_blind": 2008, "osm": "2012",
+             "osm_area": (174300, 448750, 174950, 449000)},
+    "1987": {"label": "1987", "ahn2": True, "built": 1987, "bare": None, "topo": 1987, "paving": 15, "osm": "2012"},
+}
+ERA_CONF = ERAS.get(ERA, {})
+
+
+def in_era(entry):
+    """Whether a landmark (with optional "since" and "until" years) exists in the era being built."""
+    year = ERA_CONF.get("built", 9999)
+    return entry.get("since", 0) <= year and year < entry.get("until", 99999)
 
 # Ede, 4 x 4 km around the Enka-terrein: the Enka chimney (175084, 448248) sits in the south-east quarter, with
 # station Ede-Wageningen in the middle and the old centre around the Oude Kerk at the top.

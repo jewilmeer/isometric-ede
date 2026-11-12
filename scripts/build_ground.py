@@ -13,13 +13,15 @@ Output, in 2000x2000 px chunks of 500 m (0.25 m/px), row 0 north:
 import hashlib
 import json
 import math
+from functools import cache
 
 import numpy as np
 from PIL import Image, ImageDraw
 from scipy import ndimage as ndi
 
 from aerial import load_aerial
-from config import BUILD, CHUNK, CX, CY, GROUND_RES, NX as CHUNKS_X, NY as CHUNKS_Y, RAW, XMAX, XMIN, YMAX, YMIN
+from era import bare, built_after, changed
+from config import ERA, ERA_CONF, BUILD, CHUNK, CX, CY, GROUND_RES, NX as CHUNKS_X, NY as CHUNKS_Y, RAW, XMAX, XMIN, YMAX, YMIN
 from sun import SUN_AZIMUTH, SUN_ELEVATION
 
 NX, NY = int((XMAX - XMIN) / GROUND_RES), int((YMAX - YMIN) / GROUND_RES)
@@ -53,10 +55,12 @@ STYLES = {
     "building": (168, 162, 150),
     "bridge": (150, 140, 126),
     "cyclepath": (212, 118, 60),
+    "bare": (206, 184, 140),
+    "tartan": (192, 88, 58),  # the athletics track  # a building site in an earlier era (scripts/era.py)
 }
 CAT = {k: i for i, k in enumerate(STYLES)}
 WATERY = {CAT["water"]}
-SOFT = {CAT[k] for k in ("grass", "meadow", "berm", "shrub", "forest", "field", "orchard", "heath", "marsh", "ditch", "bank", "yard", "dirt", "sand", "gap")}
+SOFT = {CAT[k] for k in ("bare", "grass", "meadow", "berm", "shrub", "forest", "field", "orchard", "heath", "marsh", "ditch", "bank", "yard", "dirt", "sand", "gap")}
 
 
 def style_for(coll, p):
@@ -192,6 +196,29 @@ def changed_ground():
     return out
 
 
+def era_style(coll, props, rings, style):
+    """In an earlier era: what lay where today's polygon lies, when that is in the changed area (scripts/era.py). A
+    building that stood then keeps its own."""
+    from shapely.geometry import Point
+
+    if ERA is None or not changed().contains(Point(np.asarray(rings[0])[:, :2].mean(0))):
+        return style
+    if coll == "pand" and props.get("bag_pnd") in standing():
+        return style
+    return "bare" if bare().contains(Point(np.asarray(rings[0])[:, :2].mean(0))) else "grass"
+
+
+@cache
+def standing():
+    """BAG ids of today's buildings that stood in the era too."""
+    out = set()
+    for line in open(RAW / "3dbag.jsonl"):
+        f = json.loads(line)
+        if not built_after(f["CityObjects"][f["id"]]["attributes"]):
+            out.add(f["id"].rsplit(".", 1)[-1])
+    return out
+
+
 def changed_style(coll, props, rings, style, areas):
     """The style of a BGT polygon that lies mostly inside a changed area, else its own."""
     from shapely.geometry import Polygon
@@ -204,7 +231,8 @@ def changed_style(coll, props, rings, style, areas):
     if props.get("functie") == "spoorbaan":
         return style
     if coll == "wegdeel" and props.get("functie") == "fietspad":
-        return "cyclepath"
+        # The paths from OpenStreetMap are the ones there now; the BGT's is the old straight road through the park.
+        return "cyclepath" if str(props.get("lokaal_id", "")).startswith("osm") else "grass"
     return "grass" if style in TO_PARK else style
 
 
@@ -259,7 +287,7 @@ def main():
     for i, (_, _, coll, props, rings) in enumerate(polys, start=1):
         # Seeded per polygon, so a field keeps its crop when the map area changes.
         rng = np.random.default_rng(int(hashlib.md5(str(props.get("lokaal_id", i)).encode()).hexdigest()[:8], 16))
-        s = changed_style(coll, props, rings, style_for(coll, props), areas)
+        s = tartan(coll, props, rings) or era_style(coll, props, rings, changed_style(coll, props, rings, style_for(coll, props), areas))
         cats[i] = CAT[s]
         roads[i] = is_road(coll, s)
         c = np.array(STYLES[s], np.float32)
@@ -402,6 +430,14 @@ def main():
     del ripple, far, bank, edge, xx, yy
 
     paint_osm(img, cat)
+    # The lanes on the athletics track: a white line every 1.22 m in from its edge.
+    track = cat == CAT["tartan"]
+    if track.any():
+        dist = ndi.distance_transform_edt(track) * GROUND_RES
+        img[track & (dist > 0.4) & (np.mod(dist, 1.22) < 0.12)] = np.array((236, 232, 224), np.float32)
+        del dist
+    if ERA is not None:
+        paint_era(img, cat, n1, n2)
 
     # Darken edges between unlike surfaces so plots read as crisp shapes. Roads get their edge from their polygon.
     hard = ~np.isin(cat, list(SOFT)) & ~road
@@ -495,6 +531,73 @@ def save_road_polygons(polys, roads, cats):
                 edges.append([[round(x, 2), round(z, 2)] for x, z in ring.coords])
     (BUILD / "roads.json").write_text(json.dumps({"polygons": out, "edges": edges}, separators=(",", ":")))
     print(f"{len(out)} road polygons, {len(edges)} kerb lines")
+
+
+def paint_era(img, cat, n1, n2):
+    """The changed area of an earlier era, painted afresh so nothing of today's photo shows through: sand with tracks
+    on the building site, and elsewhere lawn with paving round the buildings that stood there then."""
+    def raster(geom, grow=0):
+        mask = Image.new("1", (NX, NY), 0)
+        d = ImageDraw.Draw(mask)
+        for p in getattr(geom, "geoms", [geom]):
+            if p.geom_type == "Polygon" and not p.is_empty:
+                d.polygon(to_px(p.exterior.coords), fill=1)
+                for hole in p.interiors:
+                    d.polygon(to_px(hole.coords), fill=0)
+        m = np.array(mask)
+        return ndi.binary_dilation(m, iterations=grow) if grow else m
+
+    ch = raster(changed()) & (cat != CAT["building"])
+    site = ch & raster(bare())
+    lawn = ch & ~site
+    demolished = BUILD / "demolished.json"
+    if demolished.exists():
+        from shapely.geometry import Polygon
+        from shapely.ops import unary_union
+
+        rings = [Polygon(r).buffer(0) for r in json.loads(demolished.read_text())]
+        paving = raster(unary_union(rings), grow=int(ERA_CONF.get("paving", 6) / GROUND_RES))
+        blind = BUILD / "blind.json"
+        if blind.exists():
+            # Round the barracks where AHN2 is blind, the wider paving of a military terrain.
+            area = unary_union([Polygon(r).buffer(0) for r in json.loads(blind.read_text())])
+            paving |= raster(unary_union([r for r in rings if r.intersects(area)]), grow=int(15 / GROUND_RES))
+        paved = lawn & paving
+        lawn &= ~paving
+        cat[paved], img[paved] = CAT["concrete"], np.array(STYLES["concrete"], np.float32) * (0.97 + 0.05 * n1[paved])[:, None]
+    cat[lawn], img[lawn] = CAT["grass"], np.array(STYLES["grass"], np.float32) * (0.94 + 0.1 * n2[lawn])[:, None]
+    # Sand worked over by machines: darker damp patches and the tracks of the shovels.
+    tracks = (np.sin(np.arange(NX, dtype=np.float32)[None, :] * 0.35 + n2 * 40) > 0.9)
+    cat[site] = CAT["bare"]
+    img[site] = np.array(STYLES["bare"], np.float32) * (0.9 + 0.14 * n1[site])[:, None]
+    img[site & (n2 > 0.62)] *= 0.86
+    img[site & tracks] *= 0.92
+
+
+@cache
+def athletics():
+    """Where OpenStreetMap has an athletics ground (leisure=track), grown by 40 m, in RD meters."""
+    from shapely.geometry import Polygon
+    from shapely.ops import unary_union
+
+    from geo import wgs_to_rd
+
+    path = RAW / "osm_landmarks.json"
+    parts = []
+    for el in json.load(open(path))["elements"] if path.exists() else []:
+        t, g = el.get("tags", {}), el.get("geometry")
+        if t.get("leisure") == "track" and g and len(g) >= 4:
+            parts.append(Polygon([wgs_to_rd(p["lat"], p["lon"]) for p in g]).buffer(40))
+    return unary_union(parts) if parts else Polygon()
+
+
+def tartan(coll, props, rings):
+    """The BGT's synthetic surfaces on an athletics ground are the track: orange."""
+    from shapely.geometry import Point
+
+    if props.get("plus_fysiek_voorkomen") != "kunststof" or ERA is not None:
+        return None
+    return "tartan" if athletics().contains(Point(np.asarray(rings[0])[:, :2].mean(0))) else None
 
 
 def paint_osm(img, cat):

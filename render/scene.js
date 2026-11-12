@@ -13,8 +13,9 @@ const TOP_MARGIN = 32;
 const BACKGROUND = new THREE.Color(0x20242c);
 const ROAD_ALPHA = 0.5; // marks road pixels in the color target, see makeRoads and the post pass
 
-const DATA = '/data/build';
-const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14 };
+// The era's data (render/run.mjs --era): data/build for now, data/build-<era> for an earlier year.
+const DATA = new URLSearchParams(location.search).get('data') || '/data/build';
+const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 };
 
 const rgb = (r, g, b) => new THREE.Color(r / 255, g / 255, b / 255);
 const hash = (x) => {
@@ -188,6 +189,63 @@ vec3 buildingPattern(vec3 base) {
     } else if (type == 13) {
       // Bridge: smooth concrete with a joint every few meters; railings plain.
       if (mod(vUv2.x, 6.0) < 0.12) c *= 0.9;
+    } else if (type == 15) {
+      // Edge of the station roof: a thin grey fascia.
+    } else if (type == 19) {
+      // Station hall: a glass wall in tall panes between slim grey mullions.
+      c = vec3(0.24, 0.29, 0.34);
+      if (mod(vUv2.x, 1.8) < 0.1 || mod(vUv2.y, 3.5) < 0.12) c = vec3(0.62, 0.64, 0.66);
+      if (vUv2.y > vAxis - 0.6) c = vec3(0.55, 0.57, 0.6);
+    } else if (type == 20) {
+      // The station tower: light grey cladding in fine vertical seams.
+      if (mod(vUv2.x, 0.55) < 0.07) c *= 0.88;
+    } else if (type == 21) {
+      // Enka factory (1920s): dark brick bays between pilasters, red steel windows, a light concrete cornice. The tall
+      // main building has storeys of paired windows; the halls tall windows.
+      float bay = mod(vUv2.x, 4.2), y = vUv2.y, top = vAxis;
+      if (bay < 0.6) c *= 1.12;
+      if (top > 14.0) {
+        float fl = mod(y, 3.4);
+        float w = bay - 0.6;
+        bool win = y > 1.0 && y < top - 1.4 && fl > 1.0 && fl < 2.9 && ((w > 0.5 && w < 1.6) || (w > 2.0 && w < 3.1));
+        if (win) {
+          c = vec3(0.24, 0.28, 0.33);
+          if (fl < 1.1 || fl > 2.8 || mod(w, 1.5) < 0.08 || abs(fl - 1.9) < 0.05) c = vFrame;
+        }
+      } else if (bay > 1.0 && bay < 3.8 && y > 1.2 && y < top - 1.6) {
+        c = vec3(0.24, 0.28, 0.33);
+        if (mod(bay - 1.0, 0.93) < 0.08 || mod(y - 1.2, 1.1) < 0.08) c = vFrame;
+      }
+      if (y > top - 0.6) c = vec3(0.8, 0.78, 0.72);
+      if (y < 0.5) c *= 0.8;
+    } else if (type == 22) {
+      // Stoer: near-black brick, each window with a yellow panel beside it; grey shutters on the ground floor.
+      float bay = mod(vUv2.x, 3.2), fl = mod(vUv2.y, 3.0);
+      if (fl > 0.6 && fl < 2.5) {
+        if (vUv2.y < 3.0 && bay > 0.3 && bay < 2.9) c = vec3(0.42, 0.44, 0.47);
+        else if (bay > 0.3 && bay < 1.4) c = vec3(0.26, 0.3, 0.34);
+        else if (bay > 1.6 && bay < 2.9) c = vFrame;
+      }
+    } else if (type == 16) {
+      // Railing: a top rail and a bottom rail, with balusters between; open in between so the children show through.
+      float y = vUv2.y - (vAxis - 1.1);
+      bool bar = y > 1.0 || y < 0.12 || mod(vUv2.x, 0.45) < 0.07;
+      if (!bar) discard;
+    } else if (type == 17) {
+      // The Enka canteen (1950s): a concrete grid of bays, each a tall window over a white panel, green frames.
+      float col = mod(vUv2.x, 3.3), fl = mod(vUv2.y, 3.4);
+      if (col > 0.45 && fl > 0.45 && vUv2.y > 0.4) {
+        c = fl < 1.3 ? vec3(0.94, 0.94, 0.91) : vec3(0.56, 0.64, 0.7);
+        if (abs(col - 1.9) < 0.07 || abs(fl - 2.4) < 0.07 || abs(fl - 1.3) < 0.06) c = vFrame;
+      }
+    } else if (type == 18) {
+      // Factory hall: brick, a band of tall steel windows, a darker plinth.
+      float col = mod(vUv2.x, 4.0);
+      if (col > 0.9 && col < 3.1 && vUv2.y > 1.4 && vUv2.y < 4.2) {
+        c = vec3(0.3, 0.33, 0.36);
+        if (mod(vUv2.y - 1.4, 0.7) < 0.07 || mod(col - 0.9, 0.55) < 0.06) c = vec3(0.5, 0.52, 0.5);
+      }
+      if (vUv2.y < 0.6) c *= 0.8;
     } else if (type == 14) {
       // Brick chimney: a course line every few meters, a darker band below the top.
       if (mod(vUv2.y, 3.2) < 0.25) c *= 0.86;
@@ -198,8 +256,19 @@ vec3 buildingPattern(vec3 base) {
       c = (a < 0.16 || b < 0.16 || mod(vUv2.y, 2.2) < 0.25) ? vec3(0.78, 0.8, 0.82) : vec3(0.42, 0.44, 0.47);
     }
   } else if (roof) {
-    if (type >= 8 && type != 10) {
+    if (type >= 8 && type != 10 && type != 15 && type != 18 && type < 21) {
       // Spires and caps: plain slate or metal.
+    } else if (type == 15) {
+      // Station roof: folded metal panels (the folds themselves come from the light); standing seams along them.
+      vec2 dir = vec2(cos(vAxis), sin(vAxis));
+      if (mod(dot(vUv2, dir), 1.5) < 0.1) c *= 0.92;
+    } else if (type == 18) {
+      // Shed roofs (sheddaken) in rows across the hall: the steep north-light glazing dark, the long slope the roof's
+      // own colour, lit brighter toward its ridge.
+      vec2 dir = vec2(cos(vAxis), sin(vAxis));
+      float t = mod(dot(vUv2, dir), 7.0);
+      if (t < 1.6) c = vec3(0.32, 0.36, 0.42);
+      else c *= 0.82 + 0.3 * (t - 1.6) / 5.4;
     } else if (type == 3) {
       // Venlo greenhouse roof: rows of glass ridges, lit on one side.
       vec2 dir = vec2(cos(vAxis), sin(vAxis));
@@ -249,7 +318,7 @@ async function makeBuildings() {
     kind[i] = v[o + 8];
     const b = v[o + 9], m = meta[b];
     type[i] = TYPES[m.kind] ?? 0;
-    axis[i] = m.kind === 'greenhouse' ? m.axis : (m.param ?? m.axis);
+    axis[i] = m.kind === 'greenhouse' || m.kind === 'station' || m.kind === 'hall' ? m.axis : m.kind === 'factory' ? m.height : (m.param ?? m.axis);
     frame.set([frames[b].r, frames[b].g, frames[b].b], i * 3);
     const c = kind[i] === 2 ? roofs[b] : walls[b];
     col.set([c.r, c.g, c.b], i * 3);

@@ -5,6 +5,7 @@
 //   --kuwahara N   painterly smoothing radius in pixels (0 = off)
 //   --pass objects a mask instead: white where buildings and trees stand above the ground (into out/tiles-<scale>-objects/)
 //   --look 135     the compass direction the camera looks in; 45 (north-east) is the default, other views get -v<look>
+//   --era 2009     an earlier year (scripts/config.py ERAS): reads data/build-<era>/, writes tiles-<scale>[-objects]-<era>[-v<look>]/
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile, stat } from 'node:fs/promises';
 import { extname, join, resolve } from 'node:path';
@@ -32,7 +33,7 @@ function serve() {
   return new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server)));
 }
 
-async function openScene(scale, kuwahara, pass, look) {
+async function openScene(scale, kuwahara, pass, look, era) {
   const server = await serve();
   const browser = await chromium.launch({
     headless: true,
@@ -41,7 +42,7 @@ async function openScene(scale, kuwahara, pass, look) {
   const page = await browser.newPage();
   page.on('console', (m) => m.type() === 'error' && console.error('page:', m.text()));
   page.on('pageerror', (e) => console.error('page error:', e.message));
-  await page.goto(`http://127.0.0.1:${server.address().port}/render/index.html?scale=${scale}&kuwahara=${kuwahara}&pass=${pass}&look=${look}`);
+  await page.goto(`http://127.0.0.1:${server.address().port}/render/index.html?scale=${scale}&kuwahara=${kuwahara}&pass=${pass}&look=${look}${era ? `&data=/data/build-${era}` : ''}`);
   await page.waitForFunction(() => window.ready || window.loadError, null, { timeout: 300_000 });
   const err = await page.evaluate(() => window.loadError);
   if (err) throw new Error(err);
@@ -59,8 +60,9 @@ const scale = parseFloat(arg('scale', '3'));
 const kuwahara = parseInt(arg('kuwahara', '0'));
 const pass = arg('pass', 'color');
 const look = parseFloat(arg('look', '45'));
+const era = arg('era', '');
 const t0 = Date.now();
-const { page, info, close } = await openScene(scale, kuwahara, pass, look);
+const { page, info, close } = await openScene(scale, kuwahara, pass, look, era);
 console.log(`scene ready in ${((Date.now() - t0) / 1000).toFixed(1)}s, full image ${info.width} x ${info.height}`);
 
 if (mode === 'crop') {
@@ -71,7 +73,7 @@ if (mode === 'crop') {
   console.log(`wrote ${out}`);
 } else if (mode === 'all') {
   const tile = parseInt(arg('tile', '2048'));
-  const dir = join(ROOT, 'out', `tiles-${scale}${pass === 'color' ? '' : `-${pass}`}${look === 45 ? '' : `-v${look}`}`);
+  const dir = join(ROOT, 'out', `tiles-${scale}${pass === 'color' ? '' : `-${pass}`}${era ? `-${era}` : ''}${look === 45 ? '' : `-v${look}`}`);
   await mkdir(dir, { recursive: true });
   const cols = Math.ceil(info.width / tile), rows = Math.ceil(info.height / tile);
   for (let r = 0; r < rows; r++) {

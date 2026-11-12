@@ -35,7 +35,9 @@ from shapely import affinity, contains_xy, prepare
 from shapely.geometry import LineString, Point, Polygon, box, shape
 from shapely.ops import unary_union
 
-from config import BUILD, CX, CY, RAW, VIEWS, XMAX, XMIN, YMAX, YMIN
+from era import bare, changed
+from era import local as to_local
+from config import ERA, BUILD, CX, CY, RAW, VIEWS, XMAX, XMIN, YMAX, YMIN
 from geo import screen, wgs_to_rd
 
 RES = 0.5  # occlusion raster, screen meters per pixel
@@ -63,13 +65,19 @@ NO_CARS = {"no", "private", "agricultural", "forestry", "delivery"}
 BIKES = {"yes", "designated", "permissive"}
 
 
+def road_file():
+    """Today's roads, or in an earlier era those of OpenStreetMap's oldest state, when fetched."""
+    then = RAW / "osm_roads-2012.json"
+    return then if ERA is not None and then.exists() else RAW / "osm_roads.json"
+
+
 def local(lat, lon):
     x, y = wgs_to_rd(lat, lon)
     return x - CX, CY - y
 
 
 def road_ways():
-    for w in json.loads((RAW / "osm_roads.json").read_text())["elements"]:
+    for w in json.loads(road_file().read_text())["elements"]:
         t = w.get("tags", {})
         hw = t.get("highway", "")
         if w["type"] != "way" or t.get("area") == "yes" or t.get("service") in SKIP_SERVICE:
@@ -114,6 +122,8 @@ def road_ways():
             "ww": walk_weight,
             "dw": walk_density,
             "oneway": oneway,
+            # On a bridge or viaduct: above whatever passes under it.
+            "layer": max(1, int(t.get("layer", "1") or 1)) if t.get("bridge") not in (None, "no") else 0,
         }
 
 
@@ -275,7 +285,7 @@ def lanes(edges):
                 walk = off if e["c"] in ("footway", "track") else bike + 0.25
             p = offset(pts, off)
             if len(p) >= 2:
-                lane = {"e": i, "a": a, "b": b, "p": p, **{k: e[k] for k in ("c", "v", "w", "d", "wb", "db", "ww", "dw")}}
+                lane = {"e": i, "a": a, "b": b, "p": p, **{k: e[k] for k in ("c", "v", "w", "d", "wb", "db", "ww", "dw", "layer")}}
                 lane["bo"], lane["wo"] = round(bike - off, 2), round(walk - off, 2)
                 out.append(lane)
     lanes.measured = f"{measured} of {len(edges)} stretches of road measured on the BGT"
@@ -344,14 +354,52 @@ def on_bridges(lanes_):
         deck = LineString([(x - CX, CY - y) for x, y in b["path"]])
         cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(np.asarray(deck.coords), axis=0), axis=1))]
         for ln in lanes_:
-            near = [deck.distance(Point(*q)) < 3.0 for q in ln["p"]]
+            # On the deck: near its line, and running along it (a road that passes under it crosses it).
+            p = np.asarray(ln["p"])
+            heading = (p[-1] - p[0]) / (np.linalg.norm(p[-1] - p[0]) or 1)
+            near = []
+            for q in p:
+                at = deck.project(Point(*q))
+                p0, p1 = deck.interpolate(max(0, at - 2)), deck.interpolate(min(deck.length, at + 2))
+                along = np.array([p1.x - p0.x, p1.y - p0.y]) / (np.hypot(p1.x - p0.x, p1.y - p0.y) or 1)
+                near.append(deck.distance(Point(*q)) < max(3.0, b["width"] / 2) and abs(heading @ along) > 0.8)
             if sum(near) < 2:
                 continue
             ys = [float(np.interp(deck.project(Point(*q)), cum, b["heights"])) if n else 0.0 for q, n in zip(ln["p"], near)]
             ln["y"] = [round(y, 2) for y in np.maximum(ys, ln.get("y", 0))]
 
 
+def decks():
+    """Where a bridge deck or a roof lies over the ground, in local meters: the roads and paths that OpenStreetMap marks
+    as a bridge, as wide as a road or a path, the station roofs, and the bridges in landmarks.json where they are more
+    than 2 m up."""
+    from shapely.ops import unary_union
+
+    parts = []
+    for ln in DECK_LANES:
+        parts.append(LineString(ln["p"]).buffer(2.0 if ln["c"] in ("cycleway", "footway", "track") else 3.5, cap_style="flat"))
+    marks = json.loads((BUILD / "landmarks.json").read_text()) if (BUILD / "landmarks.json").exists() else {}
+    # The station roofs: the BGT canopy each one stands on.
+    from shapely.geometry import Point as P
+
+    for st in marks.get("stations", []):
+        for f in json.loads((RAW / "bgt_overigbouwwerk.geojson").read_text())["features"]:
+            g = f["geometry"]
+            if g and g["type"] == "Polygon" and shape(g).contains(P(*st["at"])):
+                parts.append(affinity.affine_transform(shape(g), [1, 0, 0, -1, -CX, CY]))
+    for b in marks.get("bridges", []):
+        pts = [(x - CX, CY - y) for (x, y), h in zip(b["path"], b["heights"]) if h > 2.0]
+        if len(pts) >= 2:
+            parts.append(LineString(pts).buffer(b["width"] / 2, cap_style="flat"))
+    return unary_union(parts) if parts else None
+
+
+DECK_LANES = []
+
+
 def hidden(lanes_):
+    """Per view, the stretches of each lane behind a building ("h") and under tree crowns ("t"), and once the stretches
+    under a bridge deck ("u"): there a mover is out of sight whatever the view, until it comes out the other side."""
     samples = []
     for ln in lanes_:
         p = ln["p"]
@@ -362,6 +410,12 @@ def hidden(lanes_):
     # On a bridge deck a mover is in plain view: the deck itself is one of the buildings it would hide behind.
     raised = [np.interp(s, np.r_[0, np.cumsum(np.linalg.norm(np.diff(ln["p"], axis=0), axis=1))], ln["y"]) > 0.3 if "y" in ln
               else np.zeros(len(s), bool) for ln, (s, _, _) in zip(lanes_, samples)]
+    deck = decks()
+    if deck is not None:
+        prepare(deck)
+    for ln, (s, xs, zs), up in zip(lanes_, samples, raised):
+        on_top = ln.get("layer", 0) > 0 or up.any()
+        ln["u"] = [] if deck is None or on_top else stretches_where(contains_xy(deck, xs, zs), s)
     for ln in lanes_:
         ln["h"], ln["t"] = [], []
     for look in VIEWS:
@@ -407,7 +461,8 @@ def play_areas():
             cover = (l1 >= 0) & (l2 >= 0) & (l3 >= 0)
             tdepth = l1 * td[:, 0][None] + l2 * td[:, 1][None] + l3 * td[:, 2][None]
             hid.append("".join("1" if h else "0" for h in (cover & (tdepth < pd[:, None] - 0.4)).any(1)))
-        out.append({"name": a["name"], "h": a["h"], "kids": a["kids"], "pts": [[round(float(x), 1), round(float(z), 1)] for x, z in zip(px, pz)], "hid": hid})
+        swing = a.get("swing") and {"x": round(a["swing"]["at"][0] - CX, 2), "z": round(CY - a["swing"]["at"][1], 2), "angle": a["swing"]["angle"]}
+        out.append({"name": a["name"], "h": a["h"], "kids": a["kids"], **({"swing": swing} if swing else {}), "pts": [[round(float(x), 1), round(float(z), 1)] for x, z in zip(px, pz)], "hid": hid})
         print(f"{a['name']}: {len(px)} m², hidden per view {[h.count('1') for h in hid]}")
     return out
 
@@ -416,6 +471,13 @@ def main():
     ways = list(road_ways())
     edges = list(clip(stretches(ways)))
     out = lanes(edges)
+    if ERA is not None:
+        # The roads are those of 2012 (scripts/fetch.py fetch_attic), the oldest OpenStreetMap keeps; on the building
+        # site (scripts/era.py) none were there yet. Without them, no streets in the whole changed area.
+        gone = to_local(bare() if road_file() != RAW / "osm_roads.json" else changed())
+        prepare(gone)
+        out = [ln for ln in out if not contains_xy(gone, *np.asarray(ln["p"]).mean(0))]
+    DECK_LANES[:] = [ln for ln in out if ln.get("layer", 0) > 0]
     on_bridges(out)
     hidden(out)
     for ln in out:

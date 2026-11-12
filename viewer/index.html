@@ -12,7 +12,7 @@
 <meta property="og:image" content="https://jewilmeer.github.io/isometric-ede/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Ede rond het Enka-terrein in isometrische pixel art op een avond, met de Enka-schoorsteen en brandende straatlantaarns">
+<meta property="og:image:alt" content="Ede rond het Enka-terrein in isometrische pixel art op een avond, met de Enka-schoorstenen en brandende straatlantaarns">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://jewilmeer.github.io/isometric-ede/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -97,6 +97,9 @@
   #found { font-size: 12px; color: var(--peat); min-height: 1em; }
   #places, #series { display: flex; flex-wrap: wrap; gap: 6px; }
   #series { align-items: center; }
+  /* The year the map shows (map.json "eras"): today, or an earlier year rendered from the data of then. */
+  #eras { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  #eras > span { font: 500 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
   #series > span { font: 500 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
   button {
     font: 500 12px/1 var(--body);
@@ -359,6 +362,7 @@
   <div id="intro-body">
   <p data-en="Ede in miniature around the old Enka rayon factory, from Kasteel Hoekelum to the Oude Kerk.">Ede in miniatuur rond het Enka-terrein, van Kasteel Hoekelum tot de Oude Kerk.</p>
   <p class="long" data-en="Every house, every barracks and every tree stands in its real place, rebuilt from public maps, height measurements and an aerial photo. Scroll or pinch to zoom, or look up an address below.">Elk huis, elke kazerne en elke boom staat op zijn echte plek, nagebouwd uit openbare kaarten, hoogtemetingen en een luchtfoto. Scroll of knijp om te zoomen, of zoek hieronder een adres.</p>
+  <div id="eras" role="group" aria-label="Jaar" data-en-label="Year" hidden><span data-en="Year">Jaar</span></div>
   <form id="search" role="search">
     <input id="goto" list="place-list" placeholder="Ga naar een adres of plek…" autocomplete="off" aria-label="Ga naar een adres of plek" data-en-placeholder="Go to an address or place…" data-en-label="Go to an address or place">
     <datalist id="place-list"></datalist>
@@ -366,7 +370,7 @@
   <div id="found" aria-live="polite"></div>
   <div id="legend"><span><i></i><b data-en="Walking junctions">Wandelknooppunten</b></span><span><i class="long"></i><b data-en="Long-distance trails">Lange-afstandspaden</b></span></div>
   <div id="places" role="group" aria-label="Snel naar" data-en-label="Go to">
-    <button type="button" data-place="Enka-schoorsteen">Enka</button>
+    <button type="button" data-place="Spinnerijschoorsteen">Enka</button>
     <button type="button" data-rd="174550,450750" data-en="Centre">Centrum</button>
     <button type="button" data-place="Oude Kerk" data-en="Church">Kerk</button>
     <button type="button" data-rd="174850,449350" data-en="Barracks">Kazernes</button>
@@ -483,6 +487,12 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   // map.json holds the image size, scale and area, written by render/run.mjs.
   let M = null, viewer = null;
 
+  // The year the map shows (?era=2009, one of map.json "eras"; none for today). An earlier year has its own tiles and
+  // its own overlays (hotspots, traffic, trains, ...) in a folder of its own, map.json "data".
+  const ERA = new URLSearchParams(location.search).get('era') || '';
+  const DATA = ERA ? `${encodeURIComponent(ERA)}/` : '';
+  let ERA_LABEL = '';
+
   // Language: Dutch or English, after the browser's language; a link can ask for one (?lang=en). Static text carries its English in data-en (text), data-en-html, data-en-label (aria-label),
   // data-en-title and data-en-placeholder; text from the data files is looked up by its Dutch in en.json.
   const askedLang = new URLSearchParams(location.search).get('lang');
@@ -496,7 +506,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   const ATTRS = [['enLabel', 'aria-label'], ['enTitle', 'title'], ['enPlaceholder', 'placeholder']];
   function applyLang() {
     document.documentElement.lang = LANG;
-    document.title = L('Isometrisch Ede', 'Isometric Ede');
+    document.title = L('Isometrisch Ede', 'Isometric Ede') + (ERA_LABEL ? ` · ${ERA_LABEL}` : '');
     for (const [en, nl, prop] of SWAPS) {
       for (const el of document.querySelectorAll(`[data-${en.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}]`)) {
         if (el.dataset[nl] === undefined) el.dataset[nl] = el[prop];
@@ -656,6 +666,57 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     return true;
   }
 
+  // On open after a switch of year: the spot and zoom it was on (?at=52.02221,5.67981&zoom=1.2), without a pin. The
+  // address keeps only the year afterwards.
+  function openAt() {
+    const q = new URLSearchParams(location.search);
+    const m = (q.get('at') || '').match(/^(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)$/);
+    if (!m) return false;
+    const [X, Y] = wgsToRd(+m[1], +m[2]), { x, z } = rdToLocal(X, Y);
+    const zoom = Math.min(6, Math.max(0.02, parseFloat(q.get('zoom')) || 1 / 1.3));
+    const vp = viewer.viewport;
+    vp.zoomTo(vp.imageToViewportZoom(zoom), null, true);
+    vp.panTo(vp.imageToViewportCoordinates(groundToImage(x, z, 0)), true);
+    for (const k of ['at', 'zoom', 'view']) q.delete(k);
+    history.replaceState(null, '', location.pathname + (q.toString() ? `?${q}` : '') + location.hash);
+    return true;
+  }
+
+  // The year buttons, when map.json has more than one era; the name of an earlier year next to the title.
+  function setupEras(era) {
+    const box = document.getElementById('eras');
+    if (era && era.key !== 'now') {
+      ERA_LABEL = era.label;
+      document.querySelector('#intro h1').textContent = `Ede · ${era.label}`;
+      applyLang();
+    }
+    if (!(M.eras?.length > 1)) return;
+    box.hidden = false;
+    for (const e of M.eras) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = L(e.label, e.label_en || e.label);
+      b.setAttribute('aria-pressed', String(e.key === (era?.key || 'now')));
+      b.addEventListener('click', () => switchEra(e.key));
+      onLang.push(() => (b.textContent = L(e.label, e.label_en || e.label)));
+      box.appendChild(b);
+    }
+  }
+
+  // Another year: the page again with that year's map, on the same spot, zoom and direction.
+  function switchEra(key) {
+    if (key === (ERA || 'now') || !viewer) return;
+    const vp = viewer.viewport, c = vp.viewportToImageCoordinates(vp.getCenter(true)), g = imageToGround(c.x, c.y);
+    const q = new URLSearchParams(location.search);
+    for (const k of ['era', 'at', 'zoom', 'view']) q.delete(k);
+    if (key !== 'now') q.set('era', key);
+    // With a pin the page opens on the pin (?pin=...), without one on the middle of the screen.
+    if (!pinAt) q.set('at', rdToWgs(M.area.cx + g.x, M.area.cy - g.z).map((v) => v.toFixed(5)).join(','));
+    q.set('zoom', String(+vp.viewportToImageZoom(vp.getZoom()).toFixed(2)));
+    if (VIEW.i) q.set('view', String(VIEW.look));
+    location.assign(location.pathname + `?${q.toString().replace(/%2C/g, ',')}` + location.hash);
+  }
+
   let marker = null;
   // offsetPx moves the place up on screen, to keep it clear of a panel at the bottom.
   function flyTo(X, Y, h = 0, imageZoom = 0.7, mark = false, offsetPx = 0) {
@@ -690,6 +751,16 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
 
   fetch('map.json', { cache: 'no-store' }).then((r) => r.json()).then((map) => {
     M = map;
+    // An earlier year: its own views. A year the map doesn't have opens today's map instead.
+    const era = (M.eras || []).find((e) => e.key === (ERA || 'now'));
+    if (ERA && !era) {
+      const q = new URLSearchParams(location.search);
+      q.delete('era');
+      location.replace(location.pathname + (q.toString() ? `?${q}` : '') + location.hash);
+      return;
+    }
+    if (era) M.views = era.views;
+    setupEras(era);
     // A link may ask for another direction (?view=135); the map opens with that view's tiles.
     const want = new URLSearchParams(location.search).get('view');
     setLook(Math.max(0, (M.views || []).findIndex((v) => String(v.look) === want)));
@@ -721,7 +792,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       preserveImageSizeOnResize: true,
     });
     viewer.addHandler('open', () => {
-      if (!openPin()) goHome(true);
+      if (!openPin() && !openAt()) goHome(true);
       updateZoom();
       const p = viewer.viewport.viewportToImageCoordinates(viewer.viewport.getCenter());
       showPoint(p.x, p.y);
@@ -748,11 +819,11 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       else dropPin(e.position);
     });
     viewer.addHandler('animation-finish', () => pinAt && writePin());
-    fetch('hotspots.json', { cache: 'no-store' }).then((r) => r.json()).then(addHotspots);
-    fetch('routes.json', { cache: 'no-store' }).then((r) => r.json()).then(addRoutes);
-    fetch('history.json', { cache: 'no-store' }).then((r) => r.json()).then(addTour);
-    fetch('traffic.json', { cache: 'no-store' }).then((r) => r.json()).then(addTraffic).catch(() => {});
-    fetch('trains.json', { cache: 'no-store' }).then((r) => r.json()).then(addTrains).catch(() => {});
+    fetch(`${DATA}hotspots.json`, { cache: 'no-store' }).then((r) => r.json()).then(addHotspots);
+    fetch(`${DATA}routes.json`, { cache: 'no-store' }).then((r) => r.json()).then(addRoutes);
+    fetch(`${DATA}history.json`, { cache: 'no-store' }).then((r) => r.json()).then(addTour);
+    fetch(`${DATA}traffic.json`, { cache: 'no-store' }).then((r) => r.json()).then(addTraffic).catch(() => {});
+    fetch(`${DATA}trains.json`, { cache: 'no-store' }).then((r) => r.json()).then(addTrains).catch(() => {});
   });
 
   // Hover: named buildings light up and show their name. Polygons come in screen meters; turn them into image pixels.
@@ -844,7 +915,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     document.getElementById('info-figure').hidden = !ph;
     if (ph) {
       const img = document.getElementById('info-img');
-      img.src = ph.src;
+      img.src = DATA + ph.src;
       img.alt = T(ph.credit);
       document.getElementById('info-credit').innerHTML = `<a href="${ph.url}" target="_blank" rel="noopener">${T(ph.credit)}</a>`;
     }
@@ -964,7 +1035,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     photoIdx = (k + photos.length) % photos.length;
     const ph = photos[photoIdx];
     const img = document.getElementById('tour-img');
-    img.src = ph.src;
+    img.src = DATA + ph.src;
     img.alt = T(ph.credit);
     document.getElementById('tour-credit').innerHTML = `<a href="${ph.url}" target="_blank" rel="noopener">${T(ph.credit)}</a>`;
     const dots = document.getElementById('tour-dots');
@@ -1102,7 +1173,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   let places = [];
   const goto = document.getElementById('goto');
   const found = document.getElementById('found');
-  fetch('places.json', { cache: 'no-store' }).then((r) => r.json()).then((list) => {
+  fetch(`${DATA}places.json`, { cache: 'no-store' }).then((r) => r.json()).then((list) => {
     places = list;
     const dl = document.getElementById('place-list');
     for (const p of list) {
@@ -1111,7 +1182,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       dl.appendChild(o);
     }
     openFromHash();
-  });
+  }).catch(() => {}); // a year the map doesn't have: the page reopens on today's map
 
   // Case, hyphens and spaces don't matter, so "#Sint-Willibrorduskerk" and "sint willibrordus" both work.
   const norm = (t) => t.trim().toLowerCase().replace(/[-\s]+/g, ' ');
@@ -1357,7 +1428,8 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       // Behind a building or under a tree with any part of it: drawn below the layer of buildings and trees. Without
       // that layer, it disappears behind buildings and shows faintly under trees.
       m.behind = under(s) || under(s + m.half) || (s > m.half && under(s - m.half));
-      const target = objectsLayer ? 1 : within(l.h[v], s) ? 0 : within(l.t[v], s) ? 0.55 : 1;
+      // Under a bridge deck it is out of sight altogether (traffic.json "u").
+      const target = within(l.u, s) ? 0 : objectsLayer ? 1 : within(l.h[v], s) ? 0 : within(l.t[v], s) ? 0.55 : 1;
       m.alpha += Math.max(-dt * 6, Math.min(dt * 6, target - m.alpha));
     }
   }
@@ -1413,12 +1485,12 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   // then an ICE races through, and once in a long while a steam train puffs past. A train brakes for any train ahead
   // on its track, so it waits for a platform that is still taken.
   const YELLOW = [255, 198, 30], NSBLUE = [0, 48, 130], WINDOW = [44, 50, 64], ROOF = [150, 152, 156];
-  // Carriages: count, length and gap (m), height, top speed (m/s), acceleration, wait at the last stop and at the
+  // Carriages: count (or the counts a train may have), length and gap (m), height, top speed (m/s), acceleration, wait at the last stop and at the
   // others (s), and the bands of colour up the side: [from, to, colour or 'win'] in meters above the rail.
   const TRAINS = {
-    ic: { cars: 6, car: 27, gap: 0.6, h: 4.6, vmax: 39, acc: 0.5, dwell: 50,
+    ic: { cars: [6, 8], car: 27, gap: 0.6, h: 4.6, vmax: 39, acc: 0.5, dwell: 50,
       bands: [[0.9, 1.3, NSBLUE], [1.3, 1.6, YELLOW], [1.6, 2.3, 'win'], [2.3, 2.7, YELLOW], [2.7, 3.5, 'win'], [3.5, 4.6, YELLOW]] },
-    sprinter: { cars: 4, car: 20, gap: 0.5, h: 3.9, vmax: 33, acc: 0.8, dwell: 110,
+    sprinter: { cars: 2, car: 20, gap: 0.5, h: 3.9, vmax: 33, acc: 0.8, dwell: 110,
       bands: [[0.9, 1.4, NSBLUE], [1.4, 1.9, YELLOW], [1.9, 2.9, 'win'], [2.9, 3.9, YELLOW]] },
     rr: { cars: 3, car: 21, gap: 0.5, h: 3.9, vmax: 28, acc: 0.8, dwell: 130, via: 25,
       bands: [[0.9, 1.2, [232, 236, 240]], [1.2, 1.9, [22, 86, 170]], [1.9, 2.9, 'win'], [2.9, 3.9, [22, 86, 170]]] },
@@ -1435,8 +1507,14 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     { train: 'ice', every: 430, at: 110, routes: [['thru_e'], ['thru_w']] },
     { train: 'steam', every: 900, at: 400, chance: 0.4, routes: [['thru_e'], ['thru_w']] },
   ];
+  // The track each route runs on over the map: one train per track at a time, as the signals allow. A train that
+  // waits at Ede-Wageningen to go back the other way is off the main line meanwhile (the Sprinter on spoor 4), unless
+  // it goes back on the same track (the Valleilijn, single track to Barneveld).
+  const TRACK = { ic_e: 'east', thru_e: 'east', sprinter_out: 'east', ic_w: 'west', thru_w: 'west', sprinter_in: 'west', rr_in: 'valley', rr_out: 'valley' };
+  const taken = (track, self) => trains.some((o) => o !== self && TRACK[o.route] === track && !(o.parked && TRACK[o.legs[o.leg + 1]] !== track));
   let rails = null, trains = [], puffs = [], trainView = 0, trainClock = 0;
-  const lengthOf = (T) => T.cars * T.car + (T.cars - 1) * T.gap;
+  const carsFor = (type) => [TRAINS[type].cars].flat()[Math.floor(Math.random() * [TRAINS[type].cars].flat().length)];
+  const lengthOf = (tr) => { const T = TRAINS[tr.type]; return tr.cars * T.car + (tr.cars - 1) * T.gap; };
 
   function addTrains(data) {
     trainView = viewIn(data.views);
@@ -1450,10 +1528,14 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     for (const sv of SERVICES) sv.next = sv.at, sv.turn = Math.floor(Math.random() * sv.routes.length);
     // The map opens with a few trains already out: Intercities on their way to the station, the Sprinter and the
     // Valleilijn waiting at their platforms.
-    const start = (type, legs, s, v, stop = 0, wait = 0) => trains.push({ type, legs, leg: 0, route: legs[0], s, v, stop, wait, puff: 0 });
-    const L = (t) => lengthOf(TRAINS[t]);
-    start('ic', ['ic_e'], rails.ic_e.stops[0].s + L('ic') / 2 - 500 - Math.random() * 400, 25);
-    start('ic', ['ic_w'], rails.ic_w.stops[0].s + L('ic') / 2 + 200 + Math.random() * 300, 30, 1);
+    // `s` is where the front stands, given the train's length.
+    const start = (type, legs, s, v, stop = 0, wait = 0) => {
+      const tr = { type, cars: carsFor(type), legs, leg: 0, route: legs[0], v, stop, wait, puff: 0 };
+      tr.s = typeof s === 'function' ? s(lengthOf(tr)) : s;
+      trains.push(tr);
+    };
+    start('ic', ['ic_e'], (L) => rails.ic_e.stops[0].s + L / 2 - 500 - Math.random() * 400, 25);
+    start('ic', ['ic_w'], (L) => rails.ic_w.stops[0].s + L / 2 + 200 + Math.random() * 300, 30, 1);
     start('sprinter', ['sprinter_in', 'sprinter_out'], rails.sprinter_in.len, 0, 0, Math.random() * 60);
     start('rr', ['rr_in', 'rr_out'], rails.rr_in.len, 0, 1, Math.random() * 60);
   }
@@ -1471,7 +1553,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   // Each carriage as it stands: center, heading (front to back between its bogies), and how much of it shows.
   function carsOf(tr) {
     const T = TRAINS[tr.type], r = rails[tr.route], out = [];
-    for (let k = 0; k < T.cars; k++) {
+    for (let k = 0; k < tr.cars; k++) {
       const len = tr.type === 'steam' ? [12, 7, 15, 15, 15, 15][k] : T.car;
       const front = tr.s - (tr.type === 'steam' ? [0, 12.8, 20.6, 36.4, 52.2, 68][k] : k * (T.car + T.gap));
       const back = front - len;
@@ -1489,18 +1571,16 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     for (const sv of SERVICES) {
       if (trainClock < sv.next) continue;
       const keys = sv.routes[sv.turn % sv.routes.length];
-      const r = rails[keys[0]];
       // Only onto a free track; otherwise try again a little later.
-      const free = !trains.some((o) => carsOf(o).some((c) => Math.hypot(...railAt(r, 150).map((v, i) => v - [c.x, c.z][i])) < 160));
-      if (!free) { sv.next = trainClock + 15; continue; }
+      if (taken(TRACK[keys[0]])) { sv.next = trainClock + 15; continue; }
       sv.next = trainClock + sv.every * (0.85 + Math.random() * 0.3), sv.turn++;
       if (sv.chance && Math.random() > sv.chance) continue;
-      trains.push({ type: sv.train, legs: keys, leg: 0, route: keys[0], s: 0, v: TRAINS[sv.train].vmax * 0.8, stop: 0, wait: 0, puff: 0 });
+      trains.push({ type: sv.train, cars: carsFor(sv.train), legs: keys, leg: 0, route: keys[0], s: 0, v: TRAINS[sv.train].vmax * 0.8, stop: 0, wait: 0, puff: 0 });
     }
     // Where every carriage is, to look out for along the track ahead.
     const occupied = trains.map((tr) => carsOf(tr).flatMap((c) => [railAt(rails[tr.route], c.s1), [c.x, c.z], railAt(rails[tr.route], c.s0)]));
     trains.forEach((tr, ti) => {
-      const T = TRAINS[tr.type], r = rails[tr.route], L = lengthOf(T);
+      const T = TRAINS[tr.type], r = rails[tr.route], L = lengthOf(tr);
       let want = T.vmax;
       const stop = r.stops[tr.stop];
       if (stop) {
@@ -1508,8 +1588,10 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
         want = Math.min(want, Math.sqrt(2 * T.acc * Math.max(0, d)) + (d > 0.5 ? 0.6 : 0));
         if (d < 0.6 && tr.v < 0.4) {
           tr.v = 0, want = 0, tr.wait += dt;
-          const last = tr.stop === r.stops.length - 1;
-          if (tr.wait > (last ? T.dwell : T.via || 30) && clearAhead(tr, ti, occupied, 120)) {
+          const last = tr.stop === r.stops.length - 1, turns = last && tr.leg + 1 < tr.legs.length;
+          tr.parked = turns;
+          if (tr.wait > (last ? T.dwell : T.via || 30) && clearAhead(tr, ti, occupied, 120) && !(turns && taken(TRACK[tr.legs[tr.leg + 1]], tr))) {
+            tr.parked = false;
             tr.wait = 0, tr.stop++;
             if (last && tr.leg + 1 < tr.legs.length) {
               // Back the way it came: the last carriage leads now.
@@ -1538,7 +1620,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
         if (c && c.k === 0) puffs.push({ x: c.x + c.dx * 4.4, z: c.z + c.dz * 4.4, h: 4.3, r: 0.6, age: 0, vx: -c.dx * 0.3, vz: -c.dz * 0.3 });
       }
     });
-    trains = trains.filter((tr) => tr.s - lengthOf(TRAINS[tr.type]) < rails[tr.route].len);
+    trains = trains.filter((tr) => tr.s - lengthOf(tr) < rails[tr.route].len);
     for (const p of puffs) p.age += dt, p.h += dt * 1.1, p.r += dt * 0.5, p.x += p.vx * dt + dt * 0.4, p.z += p.vz * dt + dt * 0.25;
     puffs = puffs.filter((p) => p.age < 7);
   }
@@ -1565,7 +1647,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
         const samples = [c.s0, (c.s0 + c.s1) / 2, c.s1].filter((s) => s >= 0 && s <= r.len);
         const hid = samples.some((s) => within(h, s)), leafy = samples.some((s) => within(t, s));
         c.train = true, c.behind = hid || leafy;
-        c.alpha = objectsLayer ? 1 : samples.every((s) => within(h, s)) ? 0 : leafy ? 0.55 : 1;
+        c.alpha = within(r.u, (c.s0 + c.s1) / 2) ? 0 : objectsLayer ? 1 : samples.every((s) => within(h, s)) ? 0 : leafy ? 0.55 : 1;
         out.push(c);
       }
     }
@@ -1575,7 +1657,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   function drawCar(ctx, c, x, z, dx, dz) {
     const T = TRAINS[c.tr.type], half = c.len / 2, w = 1.45;
     const boxes = [[-half + 1.2, half - 1.2, 1.25, 0.2, 0.95, DARK]];
-    const cab = c.k === 0 || c.k === T.cars - 1;
+    const cab = c.k === 0 || c.k === c.tr.cars - 1;
     if (T.steam && c.k === 0) {
       // Locomotive: frame and red buffer beam, a black boiler with a chimney and dome, the cab at the back.
       boxes.push([-half, half, 1.4, 0.7, 1.35, [34, 32, 32]], [half - 0.3, half, 1.45, 0.75, 1.25, [176, 30, 28]],
@@ -1625,6 +1707,14 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
           c.dx = side ? -rope.ax * side : -rope.az, c.dz = side ? -rope.az * side : rope.ax, c.hopper = false;
         });
       }
+      if (a.swing) {
+        // Two of them on the swings, one seat on each side of the middle of the beam, swinging out of step.
+        const ang = (a.swing.angle * Math.PI) / 180, bx = Math.cos(ang), bz = -Math.sin(ang);
+        kids.slice(kids.length - a.kids, kids.length - a.kids + 2).forEach((c, i) => {
+          const off = i ? 0.9 : -0.9;
+          c.seat = { x: a.swing.x + bx * off, z: a.swing.z + bz * off, nx: -bz, nz: bx, phase: i * 1.7 };
+        });
+      }
     }
   }
   const ropeAngle = () => clock * 7;
@@ -1632,6 +1722,13 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   function stepKids(dt) {
     for (const c of kids) {
       if (c.rope) {
+        hideKid(c);
+        continue;
+      }
+      if (c.seat) {
+        const t = Math.sin(clock * 2.3 + c.seat.phase);
+        c.x = c.seat.x + c.seat.nx * t * 1.1, c.z = c.seat.z + c.seat.nz * t * 1.1, c.dx = c.seat.nx, c.dz = c.seat.nz;
+        c.lift = 0.45 + (1 - Math.cos(t * 0.95)) * 0.6, c.v = 0;
         hideKid(c);
         continue;
       }
@@ -1670,13 +1767,26 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     // The jumper is up whenever the rope swings under her feet.
     if (c.rope && !c.rope.side) hop = 0.32 * Math.max(0, -Math.sin(ropeAngle())) ** 2;
     if (c.rope && !c.rope.side) drawRope(ctx, c.rope, c.area.h, true);
+    if (c.seat) {
+      // The chains, from the beam to the seat.
+      for (const side of [-0.2, 0.2]) {
+        const tx = -c.seat.nz * side, tz = c.seat.nx * side;
+        const a = toPx(c.seat.x + tx, c.seat.z + tz, 2.35), b = toPx(x + tx, z + tz, c.lift + 0.05);
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(b[0], b[1]);
+        ctx.lineWidth = 0.35;
+        ctx.strokeStyle = 'rgba(60,60,64,0.9)';
+        ctx.stroke();
+      }
+    }
     drawBoxes(ctx, x, z, dx, dz, [
       [swing - 0.06, swing + 0.06, 0.05, hop, 0.75 * k + hop, c.legs, -0.08],
       [-swing - 0.06, -swing + 0.06, 0.05, hop, 0.75 * k + hop, c.legs, 0.08],
       [-0.1, 0.1, 0.16, 0.75 * k + hop, 1.3 * k + hop, c.shirt],
       [-0.08, 0.08, 0.08, 1.3 * k + hop, 1.52 * k + hop, c.skin],
       [-0.09, 0.05, 0.09, 1.5 * k + hop, 1.6 * k + hop, c.hair],
-    ], null, { lift: c.area.h });
+    ], null, { lift: c.area.h + (c.lift || 0) });
     if (c.rope && !c.rope.side) drawRope(ctx, c.rope, c.area.h, false);
   }
 
@@ -1733,6 +1843,95 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     }
   }
 
+  // Chinooks: now and then two CH-47s of the army fly over the town in loose formation, to or from an exercise on the
+  // heath east of the map, low and fast, the second one behind and to the side of the first.
+  const OLIVE = [92, 98, 68], OLIVE_DARK = [66, 72, 50], COCKPIT = [36, 42, 50];
+  const choppers = [];
+  let nextChopper = 90;
+  function spawnChoppers() {
+    // From the heath (RD about 177000, 450000) over the Enka site to the west or south-west edge, or the other way.
+    const heath = rdToLocal(176800 + Math.random() * 600, 449400 + Math.random() * 1200);
+    const over = rdToLocal(174700 + Math.random() * 800, 448200 + Math.random() * 1000);
+    const away = rdToLocal(171800, 447400 + Math.random() * 2600);
+    let pts = [];
+    for (let i = 0; i <= 120; i++) {
+      const t = i / 120, u = 1 - t; // a quadratic curve through the middle of town
+      pts.push([u * u * heath.x + 2 * u * t * over.x + t * t * away.x, u * u * heath.z + 2 * u * t * over.z + t * t * away.z]);
+    }
+    if (Math.random() < 0.5) pts = pts.reverse();
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    const h = 60 + Math.random() * 30;
+    for (const [back, side, up] of [[0, 0, 0], [60, 25 * (Math.random() < 0.5 ? -1 : 1), 6]]) {
+      choppers.push({ pts, cum, s: -back, side, h: h + up, v: 45, spin: Math.random() * 7, x: 0, z: 0, dx: 1, dz: 0 });
+    }
+  }
+  function stepChoppers(dt) {
+    for (const c of choppers) {
+      c.s += c.v * dt, c.spin += dt * 14;
+      const s = Math.max(0, Math.min(c.cum[c.cum.length - 1] - 0.01, c.s));
+      let i = 0;
+      while (i < c.cum.length - 2 && c.cum[i + 1] < s) i++;
+      const [ax, az] = c.pts[i], [bx, bz] = c.pts[i + 1], seg = c.cum[i + 1] - c.cum[i] || 1, t = (s - c.cum[i]) / seg;
+      c.dx = (bx - ax) / seg, c.dz = (bz - az) / seg;
+      c.x = ax + (bx - ax) * t - c.dz * c.side, c.z = az + (bz - az) * t + c.dx * c.side;
+    }
+    for (let i = choppers.length - 1; i >= 0; i--) if (choppers[i].s > choppers[i].cum[choppers[i].cum.length - 1]) choppers.splice(i, 1);
+    if ((nextChopper -= dt) <= 0) {
+      if (!choppers.length) spawnChoppers();
+      nextChopper = 360 + Math.random() * 360;
+    }
+  }
+  // The C key calls them in, unless the two are already up.
+  window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() !== 'c' || e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
+    if (!choppers.length) spawnChoppers();
+  });
+
+  // A Chinook: its shadow far off on the ground, an olive body with the cockpit at the front and the higher rear pylon,
+  // and the two rotors as translucent discs with blurred blades, turning opposite ways.
+  const ROTORS = [[5.8, 3.3, 1], [-6.2, 4.4, -1]]; // along the body, height above its belly, turning direction
+  function drawChopper(ctx, c, inView) {
+    const { x, z, dx, dz, h } = c, nx = -dz, nz = dx;
+    const sx = x + SHADOW[0] * h, sz = z + SHADOW[1] * h;
+    if (inView(sx, sz, 0)) {
+      const g = (f, w) => toPx(sx + dx * f + nx * w, sz + dz * f + nz * w, 0);
+      poly(ctx, [g(-7.6, -1.1), g(7.6, -1.1), g(7.6, 1.1), g(-7.6, 1.1)], 'rgba(16,20,30,0.22)');
+      for (const [f] of ROTORS) {
+        const [px, py] = toPx(sx + dx * f, sz + dz * f, 0);
+        ctx.beginPath();
+        ctx.ellipse(px, py, 9 * M.scale, 4.5 * M.scale, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(16,20,30,0.07)';
+        ctx.fill();
+      }
+    }
+    if (!inView(x, z, h)) return;
+    drawBoxes(ctx, x, z, dx, dz, [
+      [-2.8, 3.2, 1.2, 0.15, 1.15, OLIVE_DARK],
+      [-7.5, 7.5, 0.95, 0, 2.6, OLIVE],
+      [5.7, 7.65, 0.97, 1.25, 2.15, COCKPIT],
+      [4.4, 7.0, 0.6, 2.6, 3.1, OLIVE_DARK],
+      [-7.6, -3.6, 0.72, 2.6, 4.1, OLIVE_DARK],
+    ], null, { lift: h, outline: true, shadow: false });
+    for (const [f, up, turn] of ROTORS) {
+      const rx = x + dx * f, rz = z + dz * f, rh = h + up;
+      const [px, py] = toPx(rx, rz, rh);
+      ctx.beginPath();
+      ctx.ellipse(px, py, 9 * M.scale, 4.5 * M.scale, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(48,50,44,0.22)';
+      ctx.fill();
+      ctx.beginPath();
+      for (let k = 0; k < 3; k++) {
+        const a = turn * c.spin + (k * 2 * Math.PI) / 3;
+        ctx.moveTo(px, py);
+        ctx.lineTo(...toPx(rx + Math.cos(a) * 9, rz + Math.sin(a) * 9, rh));
+      }
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = 'rgba(30,30,26,0.6)';
+      ctx.stroke();
+    }
+  }
+
   function hull(pts) {
     pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
     const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
@@ -1774,7 +1973,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   // Boxes in map pixels: their shadow, an outline if asked, then the faces that look toward the camera (south-west).
   // A box is [from, to along the heading, half width, bottom, top, color or role, how far right of the center].
   // `lift` stands the boxes on a floor that high: a bridge deck, a roof terrace.
-  function drawBoxes(ctx, x, z, dx, dz, list, colorOf, { sort = false, outline = false, lift = 0 } = {}) {
+  function drawBoxes(ctx, x, z, dx, dz, list, colorOf, { sort = false, outline = false, lift = 0, shadow = true } = {}) {
     const nx = -dz, nz = dx; // to the right of the heading
     const boxes = list.map(([f0, f1, w, h0, h1, role, right = 0]) => {
       const g = (f, s) => [x + dx * f + nx * (s + right), z + dz * f + nz * (s + right)];
@@ -1786,7 +1985,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       ground.push(toPx(gx, gz, lift), toPx(gx + SHADOW[0] * (b.h1 - lift), gz + SHADOW[1] * (b.h1 - lift), lift));
       all.push(toPx(gx, gz, b.h0), toPx(gx, gz, b.h1));
     }
-    poly(ctx, hull(ground), 'rgba(16,20,30,0.28)');
+    if (shadow) poly(ctx, hull(ground), 'rgba(16,20,30,0.28)');
     if (outline) {
       path(ctx, hull(all));
       ctx.lineWidth = 1.2;
@@ -1939,6 +2138,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     target.globalAlpha = 1;
     if (inView) drawPuffs(target, inView);
     if (inView) for (const f of flocks) for (const bird of f.birds) drawBird(target, f, bird, inView);
+    if (inView) for (const c of [...choppers].sort((p, q) => depthOf(q.x, q.z) - depthOf(p.x, p.z))) drawChopper(target, c, inView);
     if (k > 1) {
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(off, 0, 0, ow, oh, (ox - b.x) * k, (oy - b.y) * k, ow * k, oh * k);
@@ -2032,6 +2232,12 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       blob(ctx, BEAM, x + dx * (half + 5), z + dz * (half + 5), 0, 4.5, 0.32 * a, true);
       blob(ctx, BEAM, x + dx * (half + 12), z + dz * (half + 12), 0, 6, 0.16 * a, true);
     }
+    // The Chinooks: a red anti-collision light that flashes on the rear pylon, a white light on the tail.
+    for (const c of choppers) {
+      if (!inView(c.x + SHADOW[0] * c.h, c.z + SHADOW[1] * c.h) && !inView(c.x, c.z)) continue;
+      if ((clock * 1.2 + c.side) % 1 < 0.12) blob(ctx, REAR, c.x - c.dx * 5.5, c.z - c.dz * 5.5, c.h + 4.3, 1.4, 1);
+      blob(ctx, BEAM, c.x - c.dx * 7.7, c.z - c.dz * 7.7, c.h + 1.8, 0.6, 0.9);
+    }
     for (const c of trainMovers()) {
       if (c.behind || !inView(c.x, c.z)) continue;
       const nx = -c.dz, nz = c.dx, half = c.len / 2, T = TRAINS[c.tr.type];
@@ -2039,7 +2245,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
         for (const sd of [-0.9, 0.9]) blob(ctx, BEAM, c.x + c.dx * half + nx * sd, c.z + c.dz * half + nz * sd, 1.0, 0.6, 1);
         blob(ctx, BEAM, c.x + c.dx * (half + 14), c.z + c.dz * (half + 14), 0, 8, 0.25, true);
       }
-      if (c.k === T.cars - 1) for (const sd of [-0.9, 0.9]) blob(ctx, REAR, c.x - c.dx * half + nx * sd, c.z - c.dz * half + nz * sd, 1.0, 0.5, 0.9);
+      if (c.k === c.tr.cars - 1) for (const sd of [-0.9, 0.9]) blob(ctx, REAR, c.x - c.dx * half + nx * sd, c.z - c.dz * half + nz * sd, 1.0, 0.5, 0.9);
       if (!T.steam || c.k > 1) for (let f = -half + 3; f < half - 2; f += 5) blob(ctx, LAMP, c.x + c.dx * f, c.z + c.dz * f, 2.4, 1.6, 0.35);
     }
     ctx.globalAlpha = 1;
@@ -2078,6 +2284,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     stepTrains(dt);
     stepKids(dt);
     stepBirds(dt);
+    stepChoppers(dt);
     clock += dt;
     const had = behind.length;
     draw();

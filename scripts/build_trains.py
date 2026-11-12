@@ -23,8 +23,8 @@ import math
 import numpy as np
 from shapely.geometry import LineString, Point
 
-from build_traffic import hidden
-from config import BUILD, CX, CY, RAW, VIEWS, XMAX, XMIN, YMAX, YMIN
+from build_traffic import DECK_LANES, hidden
+from config import ERA, BUILD, CX, CY, RAW, VIEWS, XMAX, XMIN, YMAX, YMIN
 from geo import wgs_to_rd
 
 MAX_TURN = math.radians(35)  # sharper than any switch: no reversing through a junction
@@ -34,8 +34,15 @@ STATIONS = {"Ede-Wageningen": None, "Ede Centrum": None}
 # eastbound side of the island, and so leaves straight back to Arnhem; the Valleilijn turns on 1. (In the
 # OpenStreetMap tracks, 5 can only be reached from the south.)
 TRACK = {"ic_e": "5", "ic_w": "3", "thru_e": "5", "thru_w": "3", "sprinter": "4", "rr": "1"}
+# Before the station moved east of the Klinkerbergerweg (OpenStreetMap of 2012, for the earlier eras): one island
+# platform between the two main tracks, its north face "2" and its south face "3", and a platform "1" on the north side
+# for the trains that turn. OpenStreetMap had no numbers on them then; load() names them so.
+TRACK_THEN = {"ic_e": "3", "ic_w": "2", "thru_e": "3", "thru_w": "2", "sprinter": "1", "rr": "1"}
+# Where on a shared platform a turning train stops, in meters east of the platform's middle: the Sprinter from Arnhem
+# at the east end of platform 1, the Valleilijn at the west end.
+AT_THEN = {"sprinter": 55.0, "rr": -55.0}
 # Lengths of the trains that turn back at Ede-Wageningen (render/viewer TRAINS has the same carriages).
-TURNING = {"sprinter": 81.5, "rr": 64.0}
+TURNING = {"sprinter": 40.5, "rr": 64.0}
 
 
 def local(lat, lon):
@@ -44,7 +51,7 @@ def local(lat, lon):
 
 
 def load():
-    els = json.loads((RAW / "osm_rail.json").read_text())["elements"]
+    els = json.loads((RAW / ("osm_rail.json" if ERA is None else "osm_rail-2012.json")).read_text())["elements"]
     key = lambda p: (round(p["lat"], 7), round(p["lon"], 7))
     pos, adj = {}, {}
     platforms = []
@@ -100,14 +107,11 @@ def route(pos, adj, starts, goal, penalty=lambda a, b: 1.0):
 
 
 def ends(pos, adj):
-    """The ends of the tracks outside the map, as directed segments pointing into it: (end, its neighbour)."""
+    """Where the tracks come onto the map, as directed segments pointing into it: (a node outside, its neighbour
+    inside)."""
     hx, hz = (XMAX - XMIN) / 2, (YMAX - YMIN) / 2
-    out = []
-    for k, nb in adj.items():
-        x, z = pos[k]
-        if len(nb) == 1 and (abs(x) > hx or abs(z) > hz):
-            out.append((k, next(iter(nb))))
-    return out
+    inside = lambda k: abs(pos[k][0]) <= hx and abs(pos[k][1]) <= hz
+    return [(k, n) for k, nb in adj.items() if not inside(k) for n in nb if inside(n)]
 
 
 def polyline(pos, nodes):
@@ -161,9 +165,10 @@ def main():
     pos, adj, platforms = load()
     ede, centrum = STATIONS["Ede-Wageningen"], STATIONS["Ede Centrum"]
     entries = ends(pos, adj)
-    west = sorted([e for e in entries if pos[e[0]][0] < -2500], key=lambda e: pos[e[0]][1])
-    east = sorted([e for e in entries if pos[e[0]][0] > 2500], key=lambda e: pos[e[0]][1])
-    north = [e for e in entries if abs(pos[e[0]][0]) <= 2500 and pos[e[0]][1] < 0]
+    hx, hz = (XMAX - XMIN) / 2, (YMAX - YMIN) / 2
+    west = [e for e in entries if pos[e[0]][0] < -hx]
+    east = [e for e in entries if pos[e[0]][0] > hx]
+    north = [e for e in entries if pos[e[0]][1] < -hz and abs(pos[e[0]][0]) <= hx]
     assert len(west) >= 2 and len(east) >= 2 and north, (len(west), len(east), len(north))
     exit_of = lambda e: (lambda a, b: b == e[0])
 
@@ -186,6 +191,13 @@ def main():
     across = lambda q: float(axis[0] * (q[1] - ede[1]) - axis[1] * (q[0] - ede[0]))
     along = lambda q: float(np.dot(q - ede, axis))
     sides = [(ref, across(np.array(pl.centroid.coords[0]))) for ref, pl in here]
+    if not all(ref for ref, _ in sides):
+        # Unnumbered (the old station): the platform farthest out is 1; the other is an island with a face on each
+        # side, 2 towards platform 1 and 3 away from it.
+        (_, out), (_, mid) = sorted(sides, key=lambda rs: -abs(rs[1]))[:2]
+        toward = np.sign(out - mid)
+        sides = [("1", out), ("2", mid + toward * 3.0), ("3", mid - toward * 3.0)]
+    plan = TRACK if ERA is None else TRACK_THEN
     track = {}
     for a, q in pos.items():
         if abs(along(q)) < 360 and abs(across(q)) < 40:
@@ -208,14 +220,14 @@ def main():
         p = clip(polyline(pos, nodes))[0]
         routes[key] = {"p": p, "stops": stops_on(p, stations)}
 
-    add("ic_e", route(pos, adj, [w_south], exit_of(e_south), keep_to(TRACK["ic_e"])), ["Ede-Wageningen"])
-    add("ic_w", route(pos, adj, [e_north], exit_of(w_north), keep_to(TRACK["ic_w"])), ["Ede-Wageningen"])
-    add("thru_e", route(pos, adj, [w_south], exit_of(e_south), keep_to(TRACK["thru_e"])))
-    add("thru_w", route(pos, adj, [e_north], exit_of(w_north), keep_to(TRACK["thru_w"])))
+    add("ic_e", route(pos, adj, [w_south], exit_of(e_south), keep_to(plan["ic_e"])), ["Ede-Wageningen"])
+    add("ic_w", route(pos, adj, [e_north], exit_of(w_north), keep_to(plan["ic_w"])), ["Ede-Wageningen"])
+    add("thru_e", route(pos, adj, [w_south], exit_of(e_south), keep_to(plan["thru_e"])))
+    add("thru_w", route(pos, adj, [e_north], exit_of(w_north), keep_to(plan["thru_w"])))
 
     def turning(key, entry, back_to, length, via=()):
         """In from an end of the map to a platform at Ede-Wageningen, and back out again from there."""
-        ref = TRACK[key]
+        ref = plan[key]
         nodes = route(pos, adj, [entry], platform_goal(ref), keep_to(ref))
         try:  # on along the platform track to its far end, so the whole platform lies on the route
             nodes += route(pos, adj, [(nodes[-2], nodes[-1])], lambda a, b: track.get(b) != ref)[2:]
@@ -223,6 +235,11 @@ def main():
             pass
         p = polyline(pos, nodes)
         s_mid = platform_stop(p, platforms, ede)
+        if ERA is not None and key in AT_THEN:
+            # Shift along the route to the right end of the platform, whichever way the train runs there.
+            cum = cumlen(p)
+            east = along(at(p, cum, s_mid + 1)) - along(at(p, cum, s_mid))
+            s_mid += AT_THEN[key] * np.sign(east) * np.sign(axis[0] or 1)
         front, tail = s_mid + length / 2, s_mid - length / 2
         p_in, trim = clip(cut(p, 0, front))
         routes[f"{key}_in"] = {"p": p_in, "stops": [*stops_on(p_in, via), {"s": round(float(s_mid - trim), 1), "station": "Ede-Wageningen"}]}
@@ -237,11 +254,14 @@ def main():
     turning("sprinter", e_north, e_south, TURNING["sprinter"])
     turning("rr", north[0], north[0], TURNING["rr"], via=["Ede Centrum"])
 
+    # Under the road bridges, as the cars and walkers are (scripts/build_traffic.py writes them into traffic.json).
+    traffic = json.loads((BUILD / "traffic.json").read_text())
+    DECK_LANES[:] = [ln for ln in traffic["lanes"] if ln.get("layer", 0) > 0]
     lanes = [{"p": r["p"]} for r in routes.values()]
     hidden(lanes)
     out = {}
     for (k, r), ln in zip(routes.items(), lanes):
-        out[k] = {**r, "p": [[round(float(x), 1), round(float(z), 1)] for x, z in r["p"]], "h": ln["h"], "t": ln["t"]}
+        out[k] = {**r, "p": [[round(float(x), 1), round(float(z), 1)] for x, z in r["p"]], "h": ln["h"], "t": ln["t"], "u": ln["u"]}
         print(f"{k}: {cumlen(r['p'])[-1]:.0f} m, stops {[(s['station'], s['s']) for s in r['stops']]}" + (f", front {r['front']}" if "front" in r else ""))
     (BUILD / "trains.json").write_text(json.dumps({"views": list(VIEWS), "routes": out}, separators=(",", ":")))
 

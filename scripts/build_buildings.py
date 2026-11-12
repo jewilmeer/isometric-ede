@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["numpy", "mapbox-earcut", "pillow", "scipy"]
+# dependencies = ["numpy", "mapbox-earcut", "pillow", "scipy", "shapely", "tifffile", "imagecodecs", "scikit-image"]
 # ///
 """Turn 3D BAG LoD2.2 solids into one triangle soup for the renderer.
 
@@ -23,7 +23,8 @@ from PIL import Image, ImageDraw
 
 import roof_atlas
 from aerial import load_aerial, world_to_px
-from config import BUILD, CX, CY, RAW, XMAX, XMIN, YMAX, YMIN, write_area
+from config import BUILD, CX, CY, ERA_CONF, RAW, XMAX, XMIN, YMAX, YMIN, write_area
+from era import built_after
 
 KIND = {"GroundSurface": 0, "WallSurface": 1, "RoofSurface": 2}
 COLS = 12
@@ -31,7 +32,7 @@ COLS = 12
 # Roof vertex blocks and footprints per building index, for texturing roofs from the aerial photo afterwards.
 ROOF_BLOCKS = defaultdict(list)
 FOOTPRINT = {}
-ATLAS_KINDS = {"house", "barn", "shed", "church", "school", "tank", "silo", "canopy"}
+ATLAS_KINDS = {"house", "barn", "shed", "church", "school", "tank", "silo", "canopy", "factory", "stoer"}
 
 # BGT structures that are often missing from the BAG: (height, type).
 EXTRAS = {
@@ -235,6 +236,169 @@ def add_chimneys(verts, meta, footprints, chimneys):
         footprints.append([[round(x - CX, 2), round(CY - y, 2)] for x, y in bot])
 
 
+def on_stilts(items, ground, st):
+    """A flat-roofed building rebuilt from its roof parts, each a block from the ground up to its roof, except the
+    parts whose roof lies between `lift` meters: those float, open below `under`, on columns at their corners. For the
+    old Enka canteen, whose end blocks overhang on columns."""
+    from shapely.geometry import Polygon
+
+    out = []
+    lo, hi = st["lift"]
+    for kind, rings in items:
+        if kind != 2:
+            continue
+        ring = rings[0]
+        h = float(ring[:, 2].mean()) - ground
+        poly = Polygon(ring[:, :2]).buffer(0)
+        if poly.geom_type != "Polygon" or poly.area < 1:
+            continue
+        pts = np.asarray(poly.exterior.coords)
+        if lo <= h <= hi:
+            out += extrude([pts], ground + st["under"], ground + h)
+            ang = long_axis(pts[:-1])
+            c = np.asarray(poly.centroid.coords[0])
+            for x, y in poly.minimum_rotated_rectangle.exterior.coords[:-1]:
+                inward = (c - (x, y)) / (np.hypot(*(c - (x, y))) or 1)
+                out += extrude([rect_ring(x + inward[0] * 0.7, y + inward[1] * 0.7, 0.45, 0.45, ang)], ground, ground + st["under"])
+        else:
+            out += extrude([pts], ground, ground + h)
+    return out
+
+
+def add_station(verts, meta, canopy, ring):
+    """The station roof: folded grey metal panels, a field of triangles over the platforms with some of them glass
+    skylights, on slender columns. Where `hall` cuts the canopy (an RD box), the station hall: a closed block with a
+    flat green roof. And the tall slender tower beside it."""
+    from shapely.geometry import Point, Polygon, box
+
+    poly = Polygon(ring).buffer(0)
+    H, fold = canopy["height"], canopy.get("fold", 1.4)
+    hall = poly.intersection(box(*canopy["hall"])) if canopy.get("hall") else Polygon()
+    roof = poly.difference(hall.buffer(0.01)) if not hall.is_empty else poly
+    ang = long_axis(ring)
+    du, dv = np.array([np.cos(ang), np.sin(ang)]), np.array([-np.sin(ang), np.cos(ang)])
+    c0 = np.asarray(roof.centroid.coords[0])
+    pts = np.asarray(ring) - c0
+    u0, u1 = (pts @ du).min() - 8, (pts @ du).max() + 8
+    v0, v1 = (pts @ dv).min() - 8, (pts @ dv).max() + 8
+    cell = canopy.get("cell", 6.0)
+    # A lattice of triangles: every other row of points raised by `fold`, so each cell folds along its diagonal; the
+    # roof steps down a little in bands along the tracks, as the real one does.
+    nu, nv = int((u1 - u0) / cell) + 1, int((v1 - v0) / cell) + 1
+    band = canopy.get("band", 60.0)
+
+    def vertex(i, j):
+        u, v = u0 + i * cell, v0 + j * cell
+        xy = c0 + du * u + dv * v
+        z = H + fold * ((i + j) % 2) - 0.6 * (int((u - u0) // band) % 2)
+        return np.array([xy[0], xy[1], z])
+
+    inner = roof.buffer(-0.5)
+    metal, glass, edges = [], [], {}
+    for i in range(nu):
+        for j in range(nv):
+            a, b, c, d = vertex(i, j), vertex(i + 1, j), vertex(i + 1, j + 1), vertex(i, j + 1)
+            for k, tri in enumerate(((a, b, c), (a, c, d)) if (i + j) % 2 == 0 else ((a, b, d), (b, c, d))):
+                t = np.array(tri)
+                if not inner.contains(Point(*t[:, :2].mean(0))):
+                    continue
+                if ring_area(t[:, :2]) < 0:
+                    t = t[::-1]
+                (glass if stable_rand(f"{i},{j},{k}") < canopy.get("skylights", 0.14) else metal).append((2, [t]))
+                for p, q in zip(t, np.roll(t, -1, axis=0)):
+                    key = tuple(sorted((tuple(np.round(p[:2], 2)), tuple(np.round(q[:2], 2)))))
+                    edges.setdefault(key, []).append((p, q))
+    # The fascia: wherever a triangle's edge has no neighbour, a thin grey band down from the fold.
+    fascia = []
+    for (p, q), *rest in edges.values():
+        if rest:
+            continue
+        fascia.append((1, [np.array([(*q[:2], H - 0.7), (*p[:2], H - 0.7), p, q])]))
+        fascia.append((1, [np.array([(*p[:2], H - 0.7), (*q[:2], H - 0.7), q, p])]))
+    bi = part(meta, "station-roof", "station", ang, H + fold, canopy["edge"], canopy["roof"])
+    emit(verts, metal + fascia, bi, 0.0)
+    gi = part(meta, "station-skylights", "station", ang, H + fold, canopy["edge"], canopy["glass"])
+    meta[gi]["skylight"] = True
+    emit(verts, glass, gi, 0.0)
+    footprint = np.asarray(roof.exterior.coords)[:-1] if roof.geom_type == "Polygon" else ring
+    FOOTPRINT[bi] = footprint
+
+    col = part(meta, "station-columns", "bridge", 0.0, H, canopy["columns"], canopy["columns"])
+    cols = []
+    for gx in np.arange(u0, u1, canopy["grid"]):
+        for gy in np.arange(v0, v1, canopy["grid"] / 2):
+            x, y = c0 + du * gx + dv * gy
+            if roof.buffer(-2.0).contains(Point(x, y)):
+                cols += extrude([ngon_ring(x, y, 0.3, 8, 0.0)], 0.0, H - 0.7)
+    emit(verts, cols, col, 0.0)
+
+    for part_ in getattr(hall, "geoms", [hall]):
+        if part_.geom_type != "Polygon" or part_.area < 10:
+            continue
+        hi = part(meta, "station-hall", "station_hall", ang, canopy["hall_height"], canopy["hall_wall"], canopy["hall_roof"],
+                  param=canopy["hall_height"])
+        emit(verts, extrude([np.asarray(part_.exterior.coords)[:-1]], 0.0, canopy["hall_height"]), hi, 0.0)
+    if canopy.get("tower"):
+        t = canopy["tower"]
+        bot = rect_ring(*t["at"], t["w"], t["w"] * 1.3, ang)
+        top = rect_ring(*t["at"], t["w"] * 0.8, t["w"] * 1.05, ang)
+        ti = part(meta, "station-tower", "station_tower", ang, t["h"], canopy["tower_colour"], canopy["tower_colour"], param=t["h"])
+        emit(verts, frustum(bot, top, 0.0, t["h"]), ti, 0.0, center_u=True)
+
+
+def add_props(verts, meta, props):
+    """Playground things from landmarks.json: a swing set (two A-frames and a beam, 3.6 m long) and an obstacle
+    course (balance beams, stepping posts and a climbing frame round a ring)."""
+    wood, steel = (150, 108, 70), (178, 52, 44)
+    for p in props:
+        x, y = p["at"]
+        if p["kind"] == "swings":
+            a = np.radians(p["angle"])
+            d = np.array([np.cos(a), np.sin(a)])
+            n = np.array([-d[1], d[0]])
+            bi = part(meta, f"swings-{x:.0f}", "bridge", float(a), 2.4, steel, steel)
+            items = []
+            for s in (-1, 1):
+                for k in (-1, 1):  # the legs of each A-frame splay out to the sides
+                    foot = np.array([x, y]) + d * 1.9 * s + n * 0.9 * k
+                    top = np.array([x, y]) + d * 1.9 * s
+                    items += frustum(rect_ring(*foot, 0.14, 0.14, a), rect_ring(*top, 0.14, 0.14, a), 0.0, 2.3)
+            items += extrude([rect_ring(x, y, 4.0, 0.16, a)], 2.25, 2.42)
+            emit(verts, items, bi, 0.0)
+        else:
+            bi = part(meta, f"obstacles-{x:.0f}", "shed", 0.0, 1.6, wood, wood)
+            meta[bi]["photo"] = False
+            items, r = [], p["r"]
+            for i in range(10):
+                t = 2 * np.pi * i / 10
+                cx, cy = x + r * np.cos(t), y + r * np.sin(t)
+                if i % 3 == 0:  # a balance beam along the ring
+                    items += extrude([rect_ring(cx, cy, 3.2, 0.25, t + np.pi / 2)], 0.3, 0.5)
+                elif i % 3 == 1:  # stepping posts
+                    for k in (-0.6, 0.0, 0.6):
+                        items += extrude([ngon_ring(cx + k * np.cos(t + np.pi / 2), cy + k * np.sin(t + np.pi / 2), 0.2, 6, 0.0)], 0.0, 0.35 + 0.2 * (k + 0.6))
+                else:  # a little climbing frame
+                    items += extrude([rect_ring(cx, cy, 1.4, 1.4, t)], 1.3, 1.45)
+                    for kx in (-0.6, 0.6):
+                        for ky in (-0.6, 0.6):
+                            items += extrude([rect_ring(cx + kx * np.cos(t) - ky * np.sin(t), cy + kx * np.sin(t) + ky * np.cos(t), 0.12, 0.12, t)], 0.0, 1.3)
+            emit(verts, items, bi, 0.0)
+
+
+def add_railings(verts, meta, play):
+    """A railing 1.1 m high round every raised play area (a roof terrace), so nobody falls off."""
+    for a in play:
+        if a["h"] <= 0:
+            continue
+        ring = ccw(np.asarray(a["area"], dtype=np.float64))
+        bi = part(meta, f"railing-{a['name']}", "railing", long_axis(ring), a["h"] + 1.1, (64, 70, 76), (64, 70, 76), param=a["h"] + 1.1)
+        walls = []
+        for p0, p1 in zip(ring, np.roll(ring, -1, axis=0)):
+            walls.append((1, [np.array([(*p0, a["h"]), (*p1, a["h"]), (*p1, a["h"] + 1.1), (*p0, a["h"] + 1.1)])]))
+            walls.append((1, [np.array([(*p1, a["h"]), (*p0, a["h"]), (*p0, a["h"] + 1.1), (*p1, a["h"] + 1.1)])]))
+        emit(verts, walls, bi, a.get("ground", 0.0))
+
+
 def ribbon(path, half):
     """Left and right edges of a polyline widened by `half` meters on each side, mitred at the bends."""
     p = np.asarray(path, dtype=np.float64)
@@ -301,7 +465,7 @@ def main():
         parent_id = feat["id"]
         parent = feat["CityObjects"][parent_id]
         attrs = parent["attributes"]
-        if attrs.get("status") not in ("Pand in gebruik", "Pand in gebruik (niet ingemeten)", "Verbouwing pand"):
+        if attrs.get("status") not in ("Pand in gebruik", "Pand in gebruik (niet ingemeten)", "Verbouwing pand") or built_after(attrs):
             continue
         ground = attrs.get("b3_h_maaiveld") or 0.0
         lod0 = parent["geometry"][0]["boundaries"][0][0]
@@ -332,6 +496,8 @@ def main():
                 for surf, sv in zip(shell, shell_vals):
                     k = KIND.get(surfaces[sv]["type"], 1) if sv is not None else 1
                     items.append((k, [V[r] for r in surf]))
+            if "stilts" in named.get(parent_id, {}):
+                items = on_stilts(items, ground, named[parent_id]["stilts"])
             roof_tris = emit(verts, items, bi, ground)
             area = attrs.get("b3_opp_grond") or 0
             if area > 250 and height < 10:
@@ -358,10 +524,15 @@ def main():
         if lm:
             meta[-1].update({"name": lm["name"], "wall_fixed": lm.get("wall"), "roof_fixed": lm.get("roof"), "frame_fixed": lm.get("frame")})
             add_landmark_parts(verts, meta, parent_id, lm, ground, long_axis(fp), roof_tris)
-    add_extras(verts, meta, footprints, aerial)
+    if not ERA_CONF:  # the BGT's sheds and canopies are today's
+        add_extras(verts, meta, footprints, aerial, landmarks.get("stations", []))
+    if ERA_CONF.get("ahn2"):
+        add_demolished(verts, meta, footprints)
     add_masts(verts, meta, landmarks.get("masts", []))
     add_chimneys(verts, meta, footprints, landmarks.get("chimneys", []))
     add_bridges(verts, meta, landmarks.get("bridges", []))
+    add_railings(verts, meta, landmarks.get("play", []))
+    add_props(verts, meta, landmarks.get("props", []))
     texture_roofs(aerial, meta)
     arr = np.concatenate(verts).astype(np.float32)
     arr.tofile(BUILD / "buildings.bin")
@@ -376,7 +547,7 @@ def texture_roofs(aerial, meta):
     roofs = [
         (bi, FOOTPRINT[bi], [t for _, t in ROOF_BLOCKS[bi]])
         for bi in ROOF_BLOCKS
-        if bi in FOOTPRINT and meta[bi]["kind"] in ATLAS_KINDS
+        if bi in FOOTPRINT and meta[bi]["kind"] in ATLAS_KINDS and meta[bi].get("photo", True)
     ]
     fixed = {bi: meta[bi]["roof_fixed"] for bi, _, _ in roofs if meta[bi].get("roof_fixed")}
     rects, size = roof_atlas.build(aerial, roofs, fixed)
@@ -389,8 +560,87 @@ def texture_roofs(aerial, meta):
     print(f"roof atlas {size[0]}x{size[1]} for {len(rects)} buildings, mean photo shift {np.mean(shifts):.2f} m")
 
 
-def add_extras(verts, meta, footprints, aerial):
-    """Tanks, silos and sheds from the BGT that do not overlap a BAG building."""
+def osm_2012(taken_rings):
+    """Buildings in OpenStreetMap as of September 2012 (data/raw/osm_buildings-2012.json) in the changed area that
+    neither a building of today nor one found so far covers for 30% or more: the old station hall and its canopies.
+    Their height from AHN2; where AHN2 saw only ground they were gone already, where it saw nothing 6 m, or 5 m for a
+    canopy, long and narrow."""
+    from shapely.geometry import Polygon
+    from shapely.strtree import STRtree
+
+    import topo_buildings
+    from era import changed
+    from geo import wgs_to_rd
+
+    from shapely.geometry import box
+
+    # Plus the station: rebuilt since, but its new roof is no BAG building, so not in the changed area.
+    near = changed().buffer(30).union(box(*ERA_CONF["osm_area"]) if ERA_CONF.get("osm_area") else Polygon())
+    taken = [Polygon(r).buffer(0) for r in taken_rings if len(r) >= 3]
+    tree = STRtree(taken)
+    ahn = topo_buildings.heights()
+    out = []
+    for w in json.loads((RAW / "osm_buildings-2012.json").read_text())["elements"]:
+        if w["type"] != "way" or len(w.get("geometry", [])) < 4:
+            continue
+        p = Polygon([wgs_to_rd(g["lat"], g["lon"]) for g in w["geometry"]]).buffer(0)
+        if p.geom_type != "Polygon" or p.area < 12 or not near.intersects(p):
+            continue
+        if sum(p.intersection(taken[i]).area for i in tree.query(p)) >= 0.3 * p.area:
+            continue
+        xy = np.asarray(p.minimum_rotated_rectangle.exterior.coords)
+        short, long = sorted(np.hypot(*np.diff(xy, axis=0).T)[:2])
+        h = ahn(p)
+        if h < 2.5:
+            continue  # AHN2 saw the bare ground there: gone by then, OpenStreetMap was behind
+        if np.isnan(h):
+            h = 5.0 if short <= 10 and long >= 60 else 6.0
+        out.append((np.asarray(p.exterior.coords)[:-1], round(float(h), 1)))
+    return out
+
+
+def add_demolished(verts, meta, footprints):
+    """The buildings of an earlier era that have been demolished since: from the topographic map of that year
+    (scripts/topo_buildings.py) or else from its AHN (scripts/ahn2_buildings.py). Where AHN2 measured nothing (the
+    military terrain round the barracks), from the topographic map of ERA_CONF["topo_blind"] instead; that area goes
+    into blind.json for the trees and the ground. The aerial photo is today's, so their roofs get no photo."""
+    kept = [[(x + CX, CY - z) for x, z in ring] for ring in footprints]
+    import topo_buildings
+
+    if ERA_CONF.get("topo"):
+        found = [(ring, h, "topo") for ring, h in topo_buildings.find(kept, ERA_CONF["topo"])]
+    else:
+        import ahn2_buildings
+
+        found = [(ring, h, "ahn2") for ring, h in ahn2_buildings.find(kept)]
+        if ERA_CONF.get("topo_blind"):
+            blind = ahn2_buildings.blind()
+            parts = [p for p in getattr(blind, "geoms", [blind]) if p.geom_type == "Polygon"]
+            (BUILD / "blind.json").write_text(json.dumps([[[round(x, 1), round(y, 1)] for x, y in p.exterior.coords] for p in parts]))
+            found += [(ring, h, "topo") for ring, h in topo_buildings.find(kept, ERA_CONF["topo_blind"], within=blind.buffer(10))]
+        if ERA_CONF.get("osm") == "2012":
+            found += [(ring, h, "osm") for ring, h in osm_2012(kept + [ring for ring, _, _ in found])]
+    for ring, h, source in found:
+        bi = len(meta)
+        emit(verts, extrude([ring], 0.0, h), bi, 0.0)
+        area = abs(ring_area(ring))
+        footprints.append([[round(x - CX, 2), round(CY - y, 2)] for x, y in ring])
+        rand = stable_rand(f"ahn2-{bi}")
+        kind = "hall" if source == "topo" and area > 1500 else "barn" if area > 250 and h < 12 else "house"
+        meta.append({"id": f"ahn2-{bi}", "kind": kind, "axis": round(long_axis(ring), 4),
+                     "glass": False, "year": 1935, "floors": None, "roof": "flat", "area": round(area, 1), "height": h,
+                     "roof_rgb": None, "rand": round(rand, 4), "photo": False})
+        if area > 250:
+            # Factory halls: red-brown tiles or grey corrugated sheets, as on the aerial photos of the Enka.
+            meta[-1]["roof_fixed"] = [(156, 86, 62), (126, 130, 134), (110, 114, 120)][int(rand * 3)]
+    (BUILD / "demolished.json").write_text(json.dumps([[[round(x, 2), round(y, 2)] for x, y in ring] for ring, _, _ in found]))
+    print(f"{len(found)} demolished buildings, {sum(src == 'topo' for _, _, src in found)} of them from the topographic map")
+
+
+def add_extras(verts, meta, footprints, aerial, station_roofs=()):
+    """Tanks, silos and sheds from the BGT that do not overlap a BAG building, and the station roofs from landmarks.json."""
+    from shapely.geometry import Point, Polygon
+
     w, h = int(XMAX - XMIN), int(YMAX - YMIN)
     ox, oz = CX - XMIN, YMAX - CY  # local (x, z) to mask column and row, at 1 m per pixel
     taken = Image.new("1", (w, h), 0)
@@ -408,6 +658,11 @@ def add_extras(verts, meta, footprints, aerial):
         c = rings[0].mean(0)
         cx, cz = int(c[0] - CX + ox), int(CY - c[1] + oz)
         if 0 <= cx < w and 0 <= cz < h and taken[cz, cx]:
+            continue
+        station = next((sc for sc in station_roofs if Polygon(rings[0]).contains(Point(*sc["at"]))), None)
+        if station:
+            add_station(verts, meta, station, rings[0])
+            footprints.append([[round(x - CX, 2), round(CY - y, 2)] for x, y in rings[0]])
             continue
         height, kind = EXTRAS[key]
         bi = len(meta)

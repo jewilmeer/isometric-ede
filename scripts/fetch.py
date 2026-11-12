@@ -168,12 +168,12 @@ def fetch_addresses():
     out.write_text(json.dumps(pts))
 
 
-def overpass(out, q, what):
+def overpass(out, q, what, timeout=180, hosts=None):
     """Run an Overpass query into out (Overpass is often busy, so try a few servers)."""
-    for host in ("overpass-api.de/api/interpreter", "overpass.private.coffee/api/interpreter", "maps.mail.ru/osm/tools/overpass/api/interpreter"):
+    for host in hosts or ("overpass-api.de/api/interpreter", "overpass.private.coffee/api/interpreter", "maps.mail.ru/osm/tools/overpass/api/interpreter"):
         try:
             req = urllib.request.Request(f"https://{host}", data=urllib.parse.urlencode({"data": q}).encode(), headers=UA)
-            with urllib.request.urlopen(req, timeout=180) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 out.write_bytes(r.read())
             return
         except Exception as e:  # noqa: BLE001
@@ -195,7 +195,7 @@ def fetch_osm():
         return
     bbox = osm_bbox()
     q = f"""[out:json][timeout:90];
-( nwr["military"]({bbox}); way["leisure"="pitch"]({bbox}); nwr["landuse"="cemetery"]({bbox});
+( nwr["military"]({bbox}); way["leisure"~"^(pitch|track)$"]({bbox}); nwr["landuse"="cemetery"]({bbox});
   nwr["amenity"="place_of_worship"]({bbox}); nwr["tourism"]({bbox}); nwr["historic"]({bbox}); );
 out geom tags;"""
     overpass(out, q, "pitches and graveyards")
@@ -237,6 +237,63 @@ def fetch_rail():
 ( way["railway"="rail"]({bbox}); way["railway"="platform"]({bbox}); node["railway"~"^(station|halt)$"]({bbox}); );
 out geom tags;"""
     overpass(out, q, "railway tracks")
+
+
+# OpenStreetMap as it was: the oldest state Overpass keeps (its history starts in September 2012), for the earlier
+# eras (config.ERAS "osm"), when the station of Ede-Wageningen still stood west of the Klinkerbergerweg.
+ATTIC = "2012-09-13T00:00:00Z"
+# Not every Overpass server keeps the history; one that doesn't would answer with today's map.
+HISTORY = ("overpass-api.de/api/interpreter", "overpass.private.coffee/api/interpreter")
+
+
+def fetch_attic_buildings():
+    """The buildings as OpenStreetMap had them at ATTIC, into osm_buildings-2012.json: what has been demolished since
+    and that the height data of that time misses (scripts/build_buildings.py add_demolished)."""
+    out = RAW / f"osm_buildings-{ATTIC[:4]}.json"
+    if out.exists():
+        return
+    q = f"""[out:json][timeout:300][date:"{ATTIC}"];
+( way["building"]({osm_bbox()}); );
+out geom tags;"""
+    for _ in range(3):  # history queries often time out; try again
+        overpass(out, q, "buildings of the past", timeout=600, hosts=HISTORY)
+        if out.exists():
+            break
+
+
+def fetch_attic():
+    """The roads and the railway as OpenStreetMap had them at ATTIC, into osm_roads-2012.json and osm_rail-2012.json.
+    History queries are slow, so the roads come in four parts."""
+    tag = ATTIC[:4]
+    rail = RAW / f"osm_rail-{tag}.json"
+    if not rail.exists():
+        q = f"""[out:json][timeout:300][date:"{ATTIC}"];
+( way["railway"="rail"]({osm_bbox()}); way["railway"="platform"]({osm_bbox()}); node["railway"~"^(station|halt)$"]({osm_bbox()}); );
+out geom tags;"""
+        overpass(rail, q, "railway tracks of the past", timeout=400, hosts=HISTORY)
+    roads = RAW / f"osm_roads-{tag}.json"
+    if roads.exists():
+        return
+    s, w, n, e = map(float, osm_bbox().split(","))
+    kinds = "motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|unclassified|residential|living_street|service"
+    seen, ways = set(), []
+    for lat0, lat1 in ((s, (s + n) / 2), ((s + n) / 2, n)):
+        for lon0, lon1 in ((w, (w + e) / 2), ((w + e) / 2, e)):
+            b = f"{lat0},{lon0},{lat1},{lon1}"
+            q = f"""[out:json][timeout:300][date:"{ATTIC}"];
+( way["highway"~"^({kinds})$"]({b}); way["highway"~"^(cycleway|footway|path|pedestrian|track|steps|bridleway)$"]({b}); );
+out geom;"""
+            part = roads.with_suffix(".part")
+            for _ in range(3):  # history queries often time out; try again
+                overpass(part, q, "roads of the past", timeout=600, hosts=HISTORY)
+                if part.exists():
+                    break
+            for el in json.loads(part.read_text())["elements"]:
+                if el["id"] not in seen:
+                    seen.add(el["id"])
+                    ways.append(el)
+            part.unlink()
+    roads.write_text(json.dumps({"elements": ways}))
 
 
 def main():
