@@ -146,17 +146,19 @@ def main():
     from shapely.geometry import shape as geo_shape
     from shapely.ops import unary_union
 
-    from era import under_polygons
+    from era import rail_lines, under_polygons
 
     bar = [LineString(b["path"]).buffer(b["width"] / 2 + 1.0) for b in marks.get("bridges", [])]
     bar.append(under_polygons().buffer(1.0))
+    # Nor on or by the railway: the track is kept clear, or there would be leaves on the line in autumn.
+    bar.append(rail_lines().buffer(7.0))
     bar += [geo_shape(f["geometry"]).buffer(1.5) for f in json.load(open(RAW / "bgt_wegdeel.geojson"))["features"]
             if f["properties"].get("functie") == "rijbaan autosnelweg"]
     bar = unary_union(bar)
     prepare(bar)
     onbar = contains_xy(bar, trees[:, 0] + CX, CY - trees[:, 1])
     trees = trees[~onbar]
-    print(f"{int(onbar.sum())} trees dropped from bridges and the motorway")
+    print(f"{int(onbar.sum())} trees dropped from bridges, the motorway and the railway")
     trees.tofile(BUILD / "trees.bin")
     print(f"{len(trees)} trees ({len(extra)} from BGT), {int(kind.sum())} evergreen, mean radius {radius.mean():.1f} m")
 

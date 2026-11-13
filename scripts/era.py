@@ -62,7 +62,7 @@ def underpass_ids():
     the rail is the bridge. They are recognised by what the BGT says: the way lies on a stretch of road at a relative height
     of -1 (wegdeel), no bridge deck (overbruggingsdeel) lies over it, and a railway runs within 40 m. Real road bridges
     over a railway have a BGT deck over them, so they stay."""
-    from shapely.geometry import LineString, shape
+    from shapely.geometry import LineString, Point, shape
     from shapely.ops import unary_union
 
     from geo import wgs_to_rd
@@ -77,14 +77,37 @@ def underpass_ids():
     under = unary_union([shape(f["geometry"]).buffer(0) for f in json.loads((RAW / "bgt_wegdeel.geojson").read_text())["features"]
                          if (f["properties"].get("relatieve_hoogteligging") or 0) < 0])
     out = set()
+    known = [Point(p) for p in UNDERPASSES]
     for w in roads:
         t = w["tags"]
         if t.get("bridge") in (None, "no") or t.get("highway") in ("motorway", "motorway_link", "trunk"):
             continue
         ln = line(w)
-        if ln.length < 200 and ln.intersection(deck).length < 0.3 * ln.length and ln.distance(under) < 2.5 and ln.distance(rail) < 40:
+        if any(ln.distance(k) < 30 for k in known) or (
+                ln.length < 200 and ln.intersection(deck).length < 0.3 * ln.length and ln.distance(under) < 2.5 and ln.distance(rail) < 40):
             out.add(w["id"])
     return out
+
+
+# Underpasses under the railway that people who live there know of (RD): every OSM "bridge" near one runs under it.
+UNDERPASSES = [(173246.8, 449235.7), (173502.4, 449149.9), (174509.6, 448857.8)]
+
+
+@cache
+def rail_lines():
+    """Every railway track, of today and of 2012, as one RD geometry."""
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+
+    from geo import wgs_to_rd
+
+    lines = []
+    for f in ("osm_rail.json", "osm_rail-2012.json"):
+        if (RAW / f).exists():
+            for w in json.loads((RAW / f).read_text())["elements"]:
+                if w["type"] == "way" and w.get("geometry") and w["tags"].get("railway") in ("rail", "light_rail", "tram"):
+                    lines.append(LineString([wgs_to_rd(g["lat"], g["lon"]) for g in w["geometry"]]))
+    return unary_union(lines)
 
 
 @cache
