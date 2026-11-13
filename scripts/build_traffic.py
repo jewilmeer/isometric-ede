@@ -35,7 +35,7 @@ from shapely import affinity, contains_xy, prepare
 from shapely.geometry import LineString, Point, Polygon, box, shape
 from shapely.ops import unary_union
 
-from era import bare, changed
+from era import bare, changed, underpass_ids
 from era import local as to_local
 from config import ERA, BUILD, CX, CY, RAW, VIEWS, XMAX, XMIN, YMAX, YMIN
 from geo import screen, wgs_to_rd
@@ -77,6 +77,8 @@ def local(lat, lon):
 
 
 def road_ways():
+    # Ways tagged as a bridge that really run under the railway (era.underpass_ids) are on the ground.
+    under = underpass_ids() if road_file() == RAW / "osm_roads.json" else set()
     for w in json.loads(road_file().read_text())["elements"]:
         t = w.get("tags", {})
         hw = t.get("highway", "")
@@ -123,7 +125,7 @@ def road_ways():
             "dw": walk_density,
             "oneway": oneway,
             # On a bridge or viaduct: above whatever passes under it.
-            "layer": max(1, int(t.get("layer", "1") or 1)) if t.get("bridge") not in (None, "no") else 0,
+            "layer": max(1, int(t.get("layer", "1") or 1)) if t.get("bridge") not in (None, "no") and w["id"] not in under else 0,
         }
 
 
@@ -391,6 +393,10 @@ def decks():
         pts = [(x - CX, CY - y) for (x, y), h in zip(b["path"], b["heights"]) if h > 2.0]
         if len(pts) >= 2:
             parts.append(LineString(pts).buffer(b["width"] / 2, cap_style="flat"))
+    # Roads in a short tunnel under the railway: the BGT roads at relative height -1 (trains run over them, not in them).
+    from era import local as to_local_geom, under_polygons
+
+    parts.append(to_local_geom(under_polygons(False)))
     return unary_union(parts) if parts else None
 
 

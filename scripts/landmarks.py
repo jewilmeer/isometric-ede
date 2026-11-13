@@ -56,8 +56,12 @@ BUILDINGS = [
     },
     {
         "name": "Bitterzoutloods",
-        "addrs": ["Enkalaan 29"],
+        "at": (174877.1, 448385.3),
         "kind": "Rijksmonument · 1919",
+        "style": "loods",
+        "wall": (124, 66, 50),
+        "roof": (98, 100, 104),
+        "frame": (232, 232, 226),
         "text": "De loods waar de fabriek haar bitterzout (magnesiumsulfaat) bewaarde, een van de rijksmonumenten van het Enka-terrein. In november 2015 begon Wonen op Enka, van AM en a.s.r., aan de verbouwing tot vijftien unieke loftwoningen in het historische gebouw; in december 2016 kwamen de eerste bewoners, en werd een monument van de oude kraanbaan onthuld.",
         "more": "https://www.am.nl/wp-content/uploads/2016/12/Persbericht-Loftwoningen-in-Bitterzoutloods-Op-Enka-in-Ede-bewoond.pdf",
     },
@@ -90,7 +94,7 @@ BUILDINGS = [
     },
     {
         "name": "Poort naar de Krimperij",
-        "at": (175113, 448589),
+        "at": (175115, 448590),
         "kind": "Fabrieksmuur · ca. 1922",
         "text": "De boog in de oude noordmuur van de fabriek, nu de doorgang van het park naar de Krimperij. De bijna honderd jaar oude muur is geen monument, maar was nog goed genoeg om te behouden: achter de gevel met de oude raampartijen staan nu nieuwe woningen, de muurwoningen van het Carré.",
         "more": "https://www.am.nl/wp-content/uploads/2024/03/OP-Enka-waar-elke-steen-een-verhaal-vertelt.pdf",
@@ -108,7 +112,11 @@ BUILDINGS = [
         "text": "Een nieuw gebouw, geïnspireerd op het ketelhuis dat hier naast de dunne schoorsteen stond, met een groot grasveld eromheen en een speeltuin met schommels en een hindernisbaan. Op de begane grond woont Stoer: ouders van jongvolwassenen met een verstandelijke beperking richtten de stichting op, zodat hun kinderen ieder een eigen appartement hebben, met zorg en gezamenlijke ruimtes. Ze mochten zelf een kruisje op de kaart van de wijk zetten. Boven wonen huurders van Woonstede.",
         "more": "https://www.am.nl/wp-content/uploads/2024/03/OP-Enka-waar-elke-steen-een-verhaal-vertelt.pdf",
     },
-    {"name": "De Reehorst", "at": (174497, 448446), "kind": "Congrescentrum en hotel"},
+    {
+        "name": "De Reehorst", "at": (174497, 448446), "kind": "Congrescentrum en hotel",
+        "text": "In 1932 geopend als ontspanningsgebouw voor het personeel van de Enka-fabriek aan de overkant van de weg, met een theaterzaal waar ook films werden gedraaid. Nu is het een congrescentrum en theater, met een hotel, en een plek voor bedrijfsfeesten. De naam leeft voort in de Reehorsterweg en in Edese sportverenigingen die teruggaan op de omnivereniging Sportclub Reehorst.",
+        "more": "https://nl.wikipedia.org/wiki/De_Reehorst_(Ede)",
+    },
     # The kazerneterrein, from OpenStreetMap (all tagged as municipal heritage).
     {
         "name": "Johan Willem Friso kazerne",
@@ -153,10 +161,81 @@ BUILDINGS = [
         "more": "https://nl.wikipedia.org/wiki/Elias_Beeckmankazerne",
     },
     # Churches and the old centre.
-    {"name": "Oude Kerk", "at": (174507, 450892), "kind": "Kerk"},
-    {"name": "Sint Antonius van Padua", "at": (174422, 449193), "kind": "Kerk"},
-    {"name": "Historisch Museum Ede", "at": (174213, 450948), "kind": "Museum"},
-    {"name": "Kasteel Hoekelum", "at": (174878, 447502), "kind": "Kasteel"},
+    {
+        "name": "Oude Kerk", "at": (174507, 450892), "kind": "Kerk · rijksmonument",
+        "text": "De kerk van Johannes de Doper, rond 1200 begonnen als kleine stenen hallenkerk, waarschijnlijk op de plek van een houten kerkje. In 1421 werd ze door oorlogshandelingen verwoest en daarna herbouwd; het koor is uit die tijd. In 1635 sloeg de bliksem in de toren, die helemaal uitbrandde; de spits viel op het dak en het herstel duurde jaren. In de toren zijn nog consoles te zien van de beelden van Johannes de Doper en Sint-Barbara, die er voor de beeldenstorm stonden. Een plaquette op de toren herinnert sinds 1946 aan de Tweede Wereldoorlog.",
+        "more": "https://nl.wikipedia.org/wiki/Oude_Kerk_(Ede)",
+    },
+    {
+        "name": "Sint Antonius van Padua", "at": (174422, 449193), "kind": "Kerk · 1953",
+        "text": "De parochie is begonnen met de katholieke militairen van het garnizoen van Ede. De eerste kerk, uit 1920, werd in 1944 verwoest bij geallieerde bombardementen voor Market Garden. De huidige kerk, een basiliek met een breed torenfront en een groot roosvenster in glas-in-lood, is gebouwd in 1952-1953 naar ontwerp van J.M. van Hardeveld en op 21 juli 1954 gewijd. Het orgel is van Pels (1966), de beelden van Maria en Jozef (1961) zijn van Wim Harzing.",
+        "more": "https://nl.wikipedia.org/wiki/Sint-Antonius_van_Paduakerk_(Ede)",
+    },
+    {
+        "name": "Historisch Museum Ede", "at": (174213, 450948), "kind": "Museum",
+        "text": "Vereniging Oud Ede, in 1924 opgericht, verzamelde de collectie: gereedschap, klederdracht, foto's en documenten over Ede. Het museum zat sinds 1937 in een oud boerderijtje aan de Driehoek en later in het stationsgebouw van Ede Centrum. Toen de eigenaar daar de huur sterk verhoogde, verhuisde het in januari 2016 naar de tweede verdieping van Cultura, waar het wisselende exposities houdt en nog zoekt naar een eigen pand.",
+        "more": "https://nl.wikipedia.org/wiki/Historisch_Museum_Ede",
+    },
+    {
+        "name": "Kasteel Hoekelum", "at": (174878, 447502), "kind": "Kasteel · rijksmonument",
+        "text": "In 1396 werd Randolph van Hoekelum, jagermeester van de hertog van Gelre, beleend met 'het oude goed te Hoekelum'; het oudste stenen gebouw is van omstreeks 1325. Het goed ging door veel handen, onder meer de families Van Poelwijck, Van Lawick (die het in 1695 kocht) en Van Wassenaer. Rond 1735 werd het kasteel bijna helemaal herbouwd, rond 1914 verbouwd naar ontwerp van J.W. Hanrath. Het landgoed van 112 hectare, met een landschapspark in de stijl van Zocher, is sinds 1988 van Het Geldersch Landschap; nu is het een trouwlocatie van de gemeente.",
+        "more": "https://nl.wikipedia.org/wiki/Kasteel_Hoekelum",
+    },
+    {
+        "name": "De Keetmolen", "at": (174438.0, 449084.4), "kind": "Molen · rijksmonument",
+        "text": "Een achtkante stenen beltmolen aan de Stationsweg, door de wind gedraaid op de bovenkruier. Het opschrift noemt 1750, maar volgens het kadaster is hij in 1857 gebouwd. De naam komt van de werkkeet van de grondwerkers die tussen 1845 en 1878 aan de spoorlijn Arnhem-Utrecht werkten. Hij maalde rogge, boekweit en later gerst, voor de familie Van der Craats, die hem van 1860 tot 1971 bezat. In de jaren vijftig hield het malen op; sinds 18 augustus 1971 is de molen van de gemeente, die hem in 1978 liet restaureren. Vrijwilligers laten hem nog draaien. De wieken hebben een vlucht van 24 meter.",
+        "more": "https://nl.wikipedia.org/wiki/De_Keetmolen_(Ede)",
+    },
+    {
+        "name": "Ulu Moskee", "since": 2016, "at": (173438.7, 449109.6), "kind": "Moskee · 2016",
+        "style": "mosque",
+        "wall": (228, 224, 214),
+        "roof": (90, 110, 120),
+        "text": "De Turkse moskee van Ede (Ulu Camii). De gemeenschap zat eerst in een bedrijfspand aan de Frankeneng en zocht met de gemeente een plek voor een nieuwe moskee. In december 2012 koos de gemeenteraad de Verlengde Blokkenweg, waar een nieuw bestemmingsplan voor nodig was. De nieuwe moskee, zo'n 2500 m², was begin december 2016 klaar.",
+        "more": "https://mosqpedia.org/en/mosque/483",
+    },
+    {
+        "name": "Pathé Ede", "since": 2000, "at": (172913, 447516), "kind": "Bioscoop · 2000",
+        "style": "cinema",
+        "wall": (178, 34, 38),
+        "text": "Voorheen Cinemec: een bioscoop in de geluidswal langs de A12, bij de afslag Ede. Acht rode metalen dozen, de zalen, steken uit het gras op; de hal is uitgesneden uit de wal, en bij de tweede bouwfase kwamen een evenementenzaal en een parkeergarage in de wal. Doordat de zalen zwaar zijn geïsoleerd, vormen ze zelf een stuk van het geluidsscherm langs de snelweg. Het was de eerste bioscoop van Nederland met het A-label voor duurzaamheid en won Edese architectuurprijzen in 2006 en 2009. Pathé nam de bioscoop in 2014 over van Cinemec.",
+        "more": "https://www.dp6.nl/en/projects/cinemec",
+    },
+    {
+        "name": "Stadspoort", "since": 1995, "at": (173046, 447746), "kind": "Winkelcentrum · 1995",
+        "text": "Een gedeeltelijk overdekt wijkwinkelcentrum uit 1995, als een poort over de weg de stad in, tussen de wijken Rietkampen en Maandereng. Met een bibliotheek, een Jumbo en een Albert Heijn is het ook een sociaal en cultureel middelpunt voor de buurt. In 2017 liet eigenaar Multi er discounter Action in komen om leegstand op te lossen.",
+        "more": "https://multi.eu/news/multi-netherlands-welcomes-action-to-stadspoort-shopping-centre-in-ede-and-resolves-vacancy-issue/",
+    },
+    {
+        "name": "Koningin Beatrixschool", "since": 1985, "at": (173322, 447835), "kind": "Basisschool · CNS",
+        "text": "Een christelijke basisschool van CNS Ede in de Maandereng, met in 2025 ruim 130 leerlingen. Een gang verbindt het gebouw met de twee andere scholen van dit schoolcomplex, Uniek en De Franciscus.",
+        "more": "https://www.beatrix.cnsede.nl/2026-2027-schoolgids/",
+    },
+    {
+        "name": "Uniek", "since": 1985, "at": (173305, 447786), "kind": "Basisschool · openbaar",
+        "text": "Openbare basisschool van stichting Proominent, met zo'n negentig leerlingen. In het gebouw zit ook de Peuterpoort, een peuterspeelzaal van Spelenderwijs Ede.",
+        "more": "https://allecijfers.nl/basisschool/uniek-ede",
+    },
+    {
+        "name": "De Franciscus", "since": 1985, "at": (173262, 447783), "kind": "Basisschool",
+        "text": "De derde school van het schoolcomplex in de Maandereng, aan de Mesdagstraat; een overdekte gang verbindt haar met de Koningin Beatrixschool en Uniek. Naast de scholen ligt de sportzaal De Maandereng.",
+        "more": "https://www.beatrix.cnsede.nl/2026-2027-schoolgids/",
+    },
+    {
+        "name": "Ziekenhuis Gelderse Vallei", "since": 2000, "at": (172764.9, 448303.8), "kind": "Ziekenhuis · 2000",
+        "text": "In 1987 fuseerden het Julianaziekenhuis in Ede, het streekziekenhuis in Bennekom en het Pieter Pauwziekenhuis in Wageningen; in 1990 voegde het ziekenhuis van Veenendaal (in Rhenen) zich erbij. In 1992 werd een nieuw ziekenhuis in Rietkampen goedgekeurd, dat in 2000 opende als Ziekenhuis Gelderse Vallei.",
+        "more": "https://nl.wikipedia.org/wiki/Ziekenhuis_Gelderse_Vallei",
+    },
+    {
+        "name": "Riedel", "at": (172855.4, 449291.0), "kind": "Drankenfabriek",
+        "text": "De grootste producent van vruchtensappen en vruchtendranken van Nederland, met merken als Appelsientje, CoolBest, DubbelFrisss, Taksi en Extran. Het bedrijf zegt sinds 1879 mineraalwater, limonade en vruchtendranken te maken. Van 1970 tot 2017 was het van FrieslandCampina; op 10 november 2017 nam Standard Investment het over. In 1973 bracht Riedel de eerste vruchtensappen in pakken uit, onder de naam Appelsientje. In 2016 waren er zo'n 200 medewerkers en een omzet van ongeveer 125 miljoen euro.",
+        "more": "https://www.foodingredientsfirst.com/news/standard-investment-completes-frieslandcampina-riedel-takeover.html",
+    },
+    {
+        "name": "AH XL", "at": (172862.7, 449167.6), "kind": "Supermarkt",
+        "text": "Hier stond de Berko, een groot overdekt winkelcentrum dat op 30 januari 1978 afbrandde. Later kwam hier een Maxis, een hypermarkt van de Bijenkorf-groep, die tot 2002 bleef; daarna kwam er een extra grote C1000. Op 16 juli 2008 werd het een AH XL, met zo'n 3100 m² een van de grootste van Albert Heijn.",
+        "more": "https://nl.wikipedia.org/wiki/Maxis_(hypermarkt)",
+    },
     # The Stinger dome: a white ball of a simulator for anti-aircraft missiles, which 3D BAG draws as a block.
     {
         "name": "Stingerbol",
@@ -234,7 +313,10 @@ CATEGORIES = [
         "Stingerbol", "Johan Willem Friso kazerne", "Mauritskazerne", "Kantine van de kazerne", "Arthur Kool kazerne", "P.L. Bergansiuskazerne", "Van Essenkazerne",
         "Elias Beeckman kazerne", "Simon Stevinkazerne",
     ]),
-    ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum"]),
+    ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum", "De Keetmolen"]),
+    ("scholen", "Scholen", ["Koningin Beatrixschool", "Uniek", "De Franciscus"]),
+    ("bedrijven", "Bedrijven en winkels", ["Riedel", "AH XL", "Stadspoort", "Pathé Ede"]),
+    ("zorggeloof", "Zorg en geloof", ["Ziekenhuis Gelderse Vallei", "Ulu Moskee"]),
     ("oorlog", "Oorlog en herdenking", [
         "Monument voor de bombardementsslachtoffers", "Oorlogsmonument", "Mausoleum verzetstrijders",
     ]),
@@ -271,12 +353,17 @@ STYLED = [
     # The muurwoningen behind the old north wall of the Carré: their outside is the factory facade.
     {"since": 2022, "name": "Muurwoningen Carré", "near": [(175010.6, 448626.8), (175226.3, 448556.4)], "built_from": 2010,
      "style": "factory", "wall": (118, 66, 52), "roof": (92, 94, 98), "frame": (232, 232, 226)},
+    {"since": 2022, "name": "Muurwoningen Carré west", "near": [(174970.8, 448520.2), (174987.0, 448572.6), (174994.9, 448598.0)], "built_from": 2010,
+     "style": "factory", "wall": (118, 66, 52), "roof": (92, 94, 98), "frame": (232, 232, 226)},
 ]
 
 # The north wall of the Carré, which stood free between the demolition and the muurwoningen (AM, Op Enka: the photo
 # of 2010): a brick wall two storeys high with empty window openings, with the arch to the Krimperij in it.
 WALLS = [{"until": 2022, "path": [(175010.6, 448626.8), (175226.3, 448556.4)], "h": 10.5, "thick": 0.6,
-          "gaps": [(175113, 448589, 7.0)], "wall": (128, 70, 54)}]
+          "gaps": [(175115, 448590, 7.0)], "wall": (128, 70, 54)},
+         # The west wall, from the south up to the Poortgebouw (pointed out by the user).
+         {"until": 2022, "path": [(174970.8, 448520.2), (174987.0, 448572.6), (174994.9, 448598.0)], "h": 10.5, "thick": 0.6,
+          "wall": (128, 70, 54)}]
 
 # Buildings so new that 3D BAG has no model of them yet, and AHN was flown before: extruded from their BGT footprint
 # (by BAG id) to an estimated height.
@@ -305,6 +392,7 @@ BRIDGES = [
             (175315.5, 448598.7), (175313.1, 448599.3), (175279.9, 448607.2), (175223.0, 448625.2),
         ],
         "span": (10, 11),
+        "embankment": "end",  # the ramp on the Enka side (after the span) is a raised bank of earth, not on columns
         "height": 7.5,
         "width": 4.6,
         "deck": (212, 118, 60),  # the orange of the cycle path
@@ -335,6 +423,10 @@ def circle(c, r, n=16):
 # Things to play on (scripts/build_buildings.py add_props): a swing set across its circle, and the obstacle course.
 PROPS = [
     {"kind": "swings", "since": 2020, "at": (175108.6, 448413.3), "angle": 18.0},
+    # The loading dock on the south side of the Bitterzoutloods, where the trains stopped: platform and canopy stick
+    # out, the doors lie back. From and to along the south facade (3D BAG), building on the left.
+    {"kind": "dock", "since": 1919, "from": (174803.2, 448407.0), "to": (174878.4, 448382.3), "deck": 1.0, "depth": 2.6,
+     "roof": 4.6, "overhang": 1.6, "bay": 5.5},
     {"kind": "obstacles", "since": 2020, "at": (175089.7, 448413.9), "r": 7.5},
 ]
 
@@ -360,6 +452,8 @@ PLAY = [
     {"name": "Speeltuin: schommels", "since": 2020, "area": circle((175108.6, 448413.3), 5.1), "h": 0.0, "kids": 3,
      "swing": {"at": (175108.6, 448413.3), "angle": 18.0}},
     {"name": "Speeltuin: hindernisbaan", "since": 2020, "area": circle((175089.7, 448413.9), 8.9), "h": 0.0, "kids": 6},
+    # The schoolyard of the Koningin Beatrixschool, on the paved yard (BGT) east of the building in the Maandereng.
+    {"name": "Schoolplein Maandereng", "since": 1985, "area": [(173345.5, 447822.0), (173356.0, 447821.0), (173353.0, 447846.0), (173345.0, 447851.0), (173340.0, 447846.0), (173343.0, 447830.0)], "h": 0.0, "kids": 14},
     {"name": "Terras van de BSO", "since": 2021, "area": [(175012.5, 448480.6), (175016.4, 448479.6), (175005.0, 448432.4), (175001.4, 448433.3)], "h": 7.3, "kids": 6},
 ]
 
@@ -377,6 +471,8 @@ def auto_bridges(manual):
     the bridge itself at AUTO_DECK meters, the road climbing to it along the ways it continues in."""
     from shapely.geometry import LineString, Point
 
+    from era import underpass_ids
+
     path = RAW / "osm_roads.json"
     if not path.exists():
         return []
@@ -387,7 +483,8 @@ def auto_bridges(manual):
         for g in (w["geometry"][0], w["geometry"][-1]):
             ends.setdefault(key(g), []).append(w)
     rd = lambda w: [wgs_to_rd(g["lat"], g["lon"]) for g in w["geometry"]]
-    taken = [LineString(b["path"]) for b in manual]
+    # Covered by a hand-made bridge of any era: one that is not there yet (the Langzaamverkeerbrug) is not built from OSM either.
+    taken = [LineString(b["path"]) for b in list(manual) + BRIDGES]
 
     def ramp(w, end, length):
         """Points along the ways that continue from `end` of w (0 start, -1 end), outward, `length` meters long."""
@@ -415,6 +512,8 @@ def auto_bridges(manual):
         t = w["tags"]
         hw = t.get("highway", "").removesuffix("_link") if t.get("highway") != "motorway_link" else "motorway_link"
         if t.get("bridge") in (None, "no") or int(t.get("layer", "1") or 1) < 1 or hw not in AUTO_WIDTH:
+            continue
+        if w["id"] in underpass_ids():  # tagged as a bridge but it runs under the railway: the rail is the bridge
             continue
         span = rd(w)
         if any(LineString(span).distance(m) < 5 for m in taken):

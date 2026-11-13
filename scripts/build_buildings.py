@@ -54,7 +54,7 @@ def extrude(rings_xy, z0, z1):
     out = []
     for i, r in enumerate(rings_xy):
         r = np.asarray(r, dtype=np.float64)[:, :2]
-        if np.allclose(r[0], r[-1]):
+        if np.allclose(r[0], r[-1], rtol=0, atol=1e-6):  # absolute: RD meters are large numbers
             r = r[:-1]
         # Exterior counter-clockwise, holes clockwise, so wall normals point outward.
         if (ring_area(r) > 0) != (i == 0):
@@ -66,7 +66,7 @@ def extrude(rings_xy, z0, z1):
     top = []
     for i, r in enumerate(rings_xy):
         r = np.asarray(r, dtype=np.float64)[:, :2]
-        if np.allclose(r[0], r[-1]):
+        if np.allclose(r[0], r[-1], rtol=0, atol=1e-6):  # absolute: RD meters are large numbers
             r = r[:-1]
         if (ring_area(r) > 0) != (i == 0):
             r = r[::-1]
@@ -409,29 +409,74 @@ def add_new_buildings(verts, meta, footprints, new):
 
 
 def add_walls(verts, meta, walls):
-    """Free-standing factory walls from landmarks.json: a thin slab along the path, broken where an arch or gate is
-    (`gaps`: RD x, y and width). render/scene.js cuts the window openings ("ruin")."""
+    """Free-standing factory walls from landmarks.json: a thin slab along each segment of the path, broken where an arch
+    or gate is (`gaps`: RD x, y and width). render/scene.js cuts the window openings ("ruin")."""
     for w in walls:
-        a, b = np.asarray(w["path"], dtype=np.float64)
-        d = (b - a) / np.linalg.norm(b - a)
-        length = np.linalg.norm(b - a)
-        cuts = sorted((float((np.asarray(g[:2]) - a) @ d), g[2]) for g in w.get("gaps", []))
-        spans, s0 = [], 0.0
-        for at, width in cuts:
-            spans.append((s0, at - width / 2))
-            s0 = at + width / 2
-        spans.append((s0, length))
-        ang = float(np.arctan2(d[1], d[0]))
-        bi = part(meta, f"wall-{a[0]:.0f}", "ruin", ang, w["h"], w["wall"], w["wall"], param=w["h"])
-        items = []
-        for s, e in spans:
-            if e - s > 0.5:
-                c = a + d * (s + e) / 2
-                items += extrude([rect_ring(*c, e - s, w["thick"], ang)], 0.0, w["h"])
-        # Over a gap, the arch: a lintel band across the top.
-        for at, width in cuts:
-            items += extrude([rect_ring(*(a + d * at), width + 0.2, w["thick"], ang)], w["h"] - 2.6, w["h"])
-        emit(verts, items, bi, 0.0)
+        path = np.asarray(w["path"], dtype=np.float64)
+        for a, b in zip(path, path[1:]):
+            add_wall_segment(verts, meta, w, a, b)
+
+
+def add_wall_segment(verts, meta, w, a, b):
+    d = (b - a) / np.linalg.norm(b - a)
+    length = np.linalg.norm(b - a)
+    # Gaps that lie on this segment.
+    cuts = sorted((float((np.asarray(g[:2]) - a) @ d), g[2]) for g in w.get("gaps", [])
+                  if 0 < (np.asarray(g[:2]) - a) @ d < length and abs(d[0] * (g[1] - a[1]) - d[1] * (g[0] - a[0])) < 3)
+    spans, s0 = [], 0.0
+    for at, width in cuts:
+        spans.append((s0, at - width / 2))
+        s0 = at + width / 2
+    spans.append((s0, length))
+    ang = float(np.arctan2(d[1], d[0]))
+    bi = part(meta, f"wall-{a[0]:.0f}-{a[1]:.0f}", "ruin", ang, w["h"], w["wall"], w["wall"], param=w["h"])
+    items = []
+    for s, e in spans:
+        if e - s > 0.5:
+            c = a + d * (s + e) / 2
+            items += extrude([rect_ring(*c, e - s, w["thick"], ang)], 0.0, w["h"])
+    # Over a gap, the arch: a lintel band across the top.
+    for at, width in cuts:
+        items += extrude([rect_ring(*(a + d * at), width + 0.2, w["thick"], ang)], w["h"] - 2.6, w["h"])
+    emit(verts, items, bi, 0.0)
+
+
+def add_dock(verts, meta, p):
+    """A loading dock along a facade, from `from` to `to` (RD, with the building to the left): a raised concrete
+    platform `depth` meters out at `deck` meters, and over it a steel canopy that reaches further out, at `roof` meters,
+    on red struts from the wall every `bay` meters. Where the trains stopped at the Bitterzoutloods."""
+    a, b = np.asarray(p["from"], dtype=np.float64), np.asarray(p["to"], dtype=np.float64)
+    d = (b - a) / np.linalg.norm(b - a)
+    out = np.array([d[1], -d[0]])  # to the right of from→to: away from the building
+    length = float(np.linalg.norm(b - a))
+    ang = float(np.arctan2(d[1], d[0]))
+    mid = (a + b) / 2
+    concrete, steel, red = (186, 184, 176), (150, 156, 162), (184, 30, 28)
+    deck = part(meta, f"dock-{a[0]:.0f}", "bridge", ang, p["deck"], concrete, concrete)
+    emit(verts, extrude([rect_ring(*(mid + out * p["depth"] / 2), length, p["depth"], ang)], 0.0, p["deck"]), deck, 0.0)
+    roof = part(meta, f"dock-roof-{a[0]:.0f}", "bridge", ang, p["roof"], steel, steel)
+    reach = p["depth"] + p["overhang"]
+    emit(verts, extrude([rect_ring(*(mid + out * reach / 2), length, reach, ang)], p["roof"] - 0.35, p["roof"]), roof, 0.0)
+    struts = part(meta, f"dock-struts-{a[0]:.0f}", "bridge", ang, p["roof"], red, red)
+    items = []
+    for s in np.arange(p["bay"] / 2, length, p["bay"]):
+        foot = a + d * s
+        # A brace from the wall up and out to under the canopy's edge, and the beam under the canopy back to the wall.
+        items += beam(foot, p["roof"] - 1.9, foot + out * reach * 0.85, p["roof"] - 0.25, d, 0.2)
+        items += beam(foot, p["roof"] - 0.25, foot + out * reach, p["roof"] - 0.25, d, 0.2)
+    emit(verts, items, struts, 0.0)
+
+
+def beam(p0, z0, p1, z1, side, w):
+    """A square beam of width w from (p0, z0) to (p1, z1) in RD meters; `side` is a horizontal unit vector across it."""
+    side = np.asarray(side) * w / 2
+    up = np.array([0, 0, w / 2])
+    a0, a1 = np.array([*p0, z0]), np.array([*p1, z1])
+    s3 = np.array([*side, 0.0])
+    corners = lambda c: [c - s3 - up, c + s3 - up, c + s3 + up, c - s3 + up]
+    b, t = corners(a0), corners(a1)
+    faces = [(1, [np.array([b[i], b[(i + 1) % 4], t[(i + 1) % 4], t[i]])]) for i in range(4)]
+    return faces + [(1, [np.array(t)]), (1, [np.array(b[::-1])])]
 
 
 def add_props(verts, meta, props):
@@ -439,7 +484,7 @@ def add_props(verts, meta, props):
     course (balance beams, stepping posts and a climbing frame round a ring)."""
     wood, steel = (150, 108, 70), (178, 52, 44)
     for p in props:
-        x, y = p["at"]
+        x, y = p.get("at", p.get("from"))
         if p["kind"] == "swings":
             a = np.radians(p["angle"])
             d = np.array([np.cos(a), np.sin(a)])
@@ -453,6 +498,8 @@ def add_props(verts, meta, props):
                     items += frustum(rect_ring(*foot, 0.14, 0.14, a), rect_ring(*top, 0.14, 0.14, a), 0.0, 2.3)
             items += extrude([rect_ring(x, y, 4.0, 0.16, a)], 2.25, 2.42)
             emit(verts, items, bi, 0.0)
+        elif p["kind"] == "dock":
+            add_dock(verts, meta, p)
         else:
             bi = part(meta, f"obstacles-{x:.0f}", "shed", 0.0, 1.6, wood, wood)
             meta[bi]["photo"] = False
@@ -511,11 +558,25 @@ def add_bridges(verts, meta, bridges):
         L, R = ribbon(path, b["width"] / 2)
         deck = part(meta, f"bridge-{b['name']}", "bridge", 0.0, H, b["wall"], b["deck"])
         rail = part(meta, f"bridge-{b['name']}-rail", "bridge", 0.0, H + 1.1, b["rail"], b["rail"])
-        surf, rails = [], []
+        surf, rails, bank = [], [], []
+        # "embankment": "end": from the end of the span on, the ramp lies on a bank of earth with sloping sides, not on columns.
+        dike = b["span"][1] if b.get("embankment") == "end" else len(path)
+        bank_bi = part(meta, f"bridge-{b['name']}-bank", "bridge", 0.0, H, (120, 150, 80), (120, 150, 80)) if dike < len(path) else None
         for i in range(len(path) - 1):
             h0, h1 = hs[i], hs[i + 1]
             l0, l1, r0, r1 = (*L[i], h0), (*L[i + 1], h1), (*R[i], h0), (*R[i + 1], h1)
             surf += [(2, tri(l0, r0, r1)), (2, tri(l0, r1, l1))]
+            if i >= dike:
+                # The bank under the deck: each side slopes out 1 m for every 1.1 m of height; the rail stays on the deck.
+                for P, Q, a_i, c_i, ha, hc, sign in ((L, R, i + 1, i, h1, h0, 1), (R, L, i, i + 1, h0, h1, -1)):
+                    out_dir = lambda k: (P[k] - Q[k]) / (np.linalg.norm(P[k] - Q[k]) or 1)
+                    a, c = P[a_i], P[c_i]
+                    a_o, c_o = a + out_dir(a_i) * ha / 1.1, c + out_dir(c_i) * hc / 1.1
+                    if max(ha, hc) < 0.05:
+                        continue
+                    bank.append((1, [np.array([(*a_o, 0.0), (*c_o, 0.0), (*c, hc), (*a, ha)])]))
+                    rails.append((1, [np.array([(*a, ha), (*c, hc), (*c, hc + 1.1), (*a, ha + 1.1)])]))
+                continue
             # The edge of the deck, 0.8 m thick, down to the ground where the ramp is low. Each wall runs with its
             # outside on the right, as in extrude().
             for a, c, ha, hc in ((L[i + 1], L[i], h1, h0), (R[i], R[i + 1], h0, h1)):
@@ -525,10 +586,16 @@ def add_bridges(verts, meta, bridges):
         # Columns every 12 m where the deck is high, but none on the tracks.
         for s in np.arange(6, cum[-1], 12.0):
             h = float(np.interp(s, cum, hs))
-            if h < 2.0 or s0 - 4 < s < s1 + 4:
+            if h < 2.0 or s0 - 4 < s < s1 + 4 or (dike < len(path) and s > cum[dike] - 0.1):
                 continue
             x, y = np.interp(s, cum, path[:, 0]), np.interp(s, cum, path[:, 1])
             surf += extrude([rect_ring(x, y, 0.8, 0.8, 0.0)], 0.0, h - 0.8)
+        if bank:
+            # The end of the bank against the abutment, seen from both sides.
+            e = dike
+            cap = [np.array([(*L[e], 0.0), (*R[e], 0.0), (*R[e], hs[e]), (*L[e], hs[e])])]
+            bank += [(1, cap), (1, [cap[0][::-1]])]
+            emit(verts, bank, bank_bi, 0.0)
         emit(verts, surf, deck, 0.0)
         emit(verts, rails, rail, 0.0)
 
@@ -661,6 +728,19 @@ def texture_roofs(aerial, meta):
     print(f"roof atlas {size[0]}x{size[1]} for {len(rects)} buildings, mean photo shift {np.mean(shifts):.2f} m")
 
 
+OLD_STATION_WAY = 112289617  # the old station Ede-Wageningen in OpenStreetMap of 2012: a long block along the platform
+
+
+def old_station():
+    """The old station building (RD (174565, 448867)) as a ring, 5 m high: in both earlier eras, whatever else was found."""
+    from geo import wgs_to_rd
+
+    for w in json.loads((RAW / "osm_buildings-2012.json").read_text())["elements"]:
+        if w["id"] == OLD_STATION_WAY:
+            return np.array([wgs_to_rd(g["lat"], g["lon"]) for g in w["geometry"]][:-1])
+    return None
+
+
 def osm_2012(taken_rings):
     """Buildings in OpenStreetMap as of September 2012 (data/raw/osm_buildings-2012.json) in the changed area that
     neither a building of today nor one found so far covers for 30% or more: the old station hall and its canopies.
@@ -670,7 +750,7 @@ def osm_2012(taken_rings):
     from shapely.strtree import STRtree
 
     import topo_buildings
-    from era import changed
+    from era import changed, rail_zone
     from geo import wgs_to_rd
 
     from shapely.geometry import box
@@ -682,13 +762,15 @@ def osm_2012(taken_rings):
     ahn = topo_buildings.heights()
     out = []
     for w in json.loads((RAW / "osm_buildings-2012.json").read_text())["elements"]:
-        if w["type"] != "way" or len(w.get("geometry", [])) < 4:
+        if w["type"] != "way" or len(w.get("geometry", [])) < 4 or w["id"] == OLD_STATION_WAY:
             continue
         p = Polygon([wgs_to_rd(g["lat"], g["lon"]) for g in w["geometry"]]).buffer(0)
         if p.geom_type != "Polygon" or p.area < 12 or not near.intersects(p):
             continue
         if sum(p.intersection(taken[i]).area for i in tree.query(p)) >= 0.3 * p.area:
             continue
+        if p.intersection(rail_zone()).area >= 0.3 * p.area:
+            continue  # trains, platforms and sheds along the track: no building
         xy = np.asarray(p.minimum_rotated_rectangle.exterior.coords)
         short, long = sorted(np.hypot(*np.diff(xy, axis=0).T)[:2])
         h = ahn(p)
@@ -721,6 +803,13 @@ def add_demolished(verts, meta, footprints):
             found += [(ring, h, "barracks") for ring, h in topo_buildings.find(kept, ERA_CONF["topo_blind"], within=blind.buffer(10))]
         if ERA_CONF.get("osm") == "2012":
             found += [(ring, h, "osm") for ring, h in osm_2012(kept + [ring for ring, _, _ in found])]
+    station = old_station()
+    if station is not None:
+        from shapely.geometry import Polygon as Poly
+
+        sp = Poly(station).buffer(0)
+        found = [f for f in found if Poly(f[0]).buffer(0).intersection(sp).area < 0.2 * Poly(f[0]).buffer(0).area]
+        found.append((station, 5.0, "station"))
     for ring, h, source in found:
         bi = len(meta)
         emit(verts, extrude([ring], 0.0, h), bi, 0.0)
@@ -732,7 +821,10 @@ def add_demolished(verts, meta, footprints):
         meta.append({"id": f"ahn2-{bi}", "kind": kind, "axis": round(long_axis(ring), 4),
                      "glass": False, "year": 1935, "floors": None, "roof": "flat", "area": round(area, 1), "height": h,
                      "roof_rgb": None, "rand": round(rand, 4), "photo": False})
-        if area > 250:
+        if source == "station":
+            meta[-1]["kind"] = "house"
+            meta[-1]["roof_fixed"] = (122, 126, 130)
+        elif area > 250:
             # Factory halls: red-brown tiles or grey corrugated sheets, as on the aerial photos of the Enka.
             meta[-1]["roof_fixed"] = [(156, 86, 62), (126, 130, 134), (110, 114, 120)][int(rand * 3)]
     (BUILD / "demolished.json").write_text(json.dumps([[[round(x, 2), round(y, 2)] for x, y in ring] for ring, _, _ in found]))

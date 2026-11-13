@@ -17,7 +17,7 @@ from shapely.ops import unary_union
 from skimage import measure
 
 from config import RAW
-from era import changed
+from era import changed, rail_zone
 
 
 def heights():
@@ -124,7 +124,7 @@ def find(kept_rings, year=1987, within=None):
     grey = (mean >= lo) & (mean < hi) & (ndi.uniform_filter(sat.astype(np.float32), 7) < 18)
     grey = ndi.binary_opening(grey, iterations=3)
 
-    near = changed().buffer(30) if within is None else within
+    near = (changed().buffer(30) if within is None else within).difference(rail_zone())  # not along the track
     kept = unary_union([Polygon(r).buffer(2) for r in kept_rings if len(r) >= 3])
     ahn = heights()
     found = []

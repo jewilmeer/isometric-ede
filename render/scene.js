@@ -15,7 +15,7 @@ const ROAD_ALPHA = 0.5; // marks road pixels in the color target, see makeRoads 
 
 // The era's data (render/run.mjs --era): data/build for now, data/build-<era> for an earlier year.
 const DATA = new URLSearchParams(location.search).get('data') || '/data/build';
-const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 , dome: 23, mausoleum: 24, station1902: 25, ruin: 26, parking: 27 };
+const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 , dome: 23, mausoleum: 24, station1902: 25, ruin: 26, parking: 27, cinema: 28, mosque: 29, loods: 30 };
 
 const rgb = (r, g, b) => new THREE.Color(r / 255, g / 255, b / 255);
 const hash = (x) => {
@@ -287,6 +287,89 @@ vec3 buildingPattern(vec3 base) {
         c = vec3(0.22, 0.23, 0.25);
         if (mod(vUv2.x, 2.6) < 1.6 && fl < 1.6) c = vec3(0.45, 0.47, 0.52);
       }
+    } else if (type == 28) {
+      // Cinema (Pathe Ede): large closed facades, a glass entrance zone at the foot, a few horizontal grooves and a
+      // light band at the top.
+      float y = vUv2.y, top = vAxis;
+      if (y < 3.8) {
+        float col = mod(vUv2.x, 2.4);
+        if (y > 0.3 && col > 0.15 && col < 2.25) {
+          c = vec3(0.3, 0.38, 0.45);
+          if (col < 0.25 || col > 2.15 || y > 3.5 || y < 0.4 || abs(y - 2.0) < 0.05) c = vec3(0.7, 0.72, 0.74);
+          if (y > 2.0 && col > 0.3 && col < 1.4 && y < 3.4) c = vec3(0.4, 0.5, 0.58);
+        }
+      } else {
+        if (mod(y - 3.8, 2.6) < 0.1) c *= 0.84;
+        if (mod(vUv2.x, 6.0) < 0.07) c *= 0.9;
+      }
+      if (y > top - 1.0 && y < top - 0.2) c = vec3(0.86, 0.85, 0.82);
+      if (y > top - 0.2) c *= 0.8;
+    } else if (type == 29) {
+      // Mosque: light walls, tall narrow arched windows in rows, a decorative band under the eaves.
+      float cx = mod(vUv2.x + 1.0, 2.0) - 1.0, y = vUv2.y, top = vAxis;
+      float wy = 3.8;
+      for (int r = 0; r < 2; r++) {
+        float sy = y - (1.2 + float(r) * 4.6);
+        bool arch = sy > 2.4 && length(vec2(cx * 1.0, sy - 2.4)) < 0.4;
+        if (abs(cx) < 0.4 && sy > 0.0 && (sy <= 2.4 || arch) && y < top - 1.8) {
+          c = vec3(0.2, 0.3, 0.42);
+          if (abs(cx) > 0.31 || sy < 0.12 || length(vec2(cx, sy - 2.4)) > 0.31 && arch) c = vec3(0.8, 0.78, 0.7);
+          if (abs(cx) < 0.04 || abs(sy - 1.4) < 0.04) c = vec3(0.72, 0.7, 0.62);
+        }
+      }
+      if (y > top - 1.4 && y < top - 0.2) {
+        c = vec3(0.7, 0.62, 0.45);
+        float t = mod(vUv2.x, 0.8);
+        if (t < 0.4) c = vec3(0.84, 0.8, 0.7);
+        if (y > top - 0.5) c = vec3(0.9, 0.88, 0.8);
+      }
+      if (y < 0.5) c *= 0.8;
+    } else if (type == 30) {
+      // Bitterzoutloods (1919), now lofts: brick piers every 5.5 m with concrete caps, a brick relief band under the
+      // coping, two tall narrow windows per bay upstairs, a loading dock and sliding barn doors downstairs.
+      float bay = mod(vUv2.x, 5.5), y = vUv2.y, top = mod(vAxis, 100.0), d = top - y;
+      float rel = bay - 0.7;
+      vec3 concrete = vec3(0.8, 0.79, 0.75);
+      bool pier = bay < 0.7;
+      if (mod(y, 0.18) < 0.02) c *= 0.93;
+      if (pier) c *= 1.1;
+      if (d < 0.3) {
+        c = concrete;
+        if (!pier) c *= 0.93;
+      } else if (d < 1.2) {
+        if (!pier) {
+          vec2 cell = floor(vec2(vUv2.x, y) / 0.25);
+          c *= mod(cell.x + cell.y, 2.0) < 1.0 ? 0.78 : 1.12;
+        } else if (d < 0.5) c = concrete;
+      } else if (!pier) {
+        if (d > 1.6 && d < 4.5) {
+          // two windows per bay
+          float wx = mod(rel - 0.8, 1.6);
+          if (rel > 0.8 && rel < 4.0 && wx < 0.8) {
+            c = vec3(0.17, 0.22, 0.28);
+            if (wx < 0.07 || wx > 0.73 || d < 1.7 || d > 4.4 || abs(wx - 0.4) < 0.03 || abs(d - 3.0) < 0.03) c = vFrame;
+          }
+        } else if (y < 1.0) {
+          c = concrete * 0.95;
+          if (y < 0.12) c = vec3(0.2, 0.18, 0.17);
+          else if (y > 0.85) c *= 1.06;
+        }
+        if (y >= 1.0 && y < 4.0) {
+          if (rel > 0.35 && rel < 4.45) {
+            c = vec3(0.22, 0.2, 0.19);
+            if (rel < 3.15) {
+              c = vec3(0.72, 0.73, 0.74);
+              if (mod(y - 1.0, 0.5) < 0.04 || rel < 0.42 || abs(rel - 1.75) < 0.03) c = vec3(0.5, 0.51, 0.53);
+            } else if (rel > 3.3 && rel < 4.3 && y > 1.05 && y < 3.6) {
+              c = vFrame;
+              if (rel > 3.45 && rel < 4.15 && y > 1.3 && y < 3.3) c = vec3(0.3, 0.34, 0.38);
+            }
+          }
+          if (y > 3.9) c = vec3(0.12, 0.12, 0.13);
+        }
+      }
+      if (pier && y < 1.0) c = concrete * 0.92;
+      if (y < 0.05) c *= 0.6;
     } else if (type == 14) {
       // Brick chimney: a course line every few meters, a darker band below the top.
       if (mod(vUv2.y, 3.2) < 0.25) c *= 0.86;
@@ -310,6 +393,21 @@ vec3 buildingPattern(vec3 base) {
       float t = mod(dot(vUv2, dir), 7.0);
       if (t < 1.6) c = vec3(0.32, 0.36, 0.42);
       else c *= 0.82 + 0.3 * (t - 1.6) / 5.4;
+    } else if (type == 30) {
+      // Loods roof: zinc with standing seams, and long glass strips (skylights) along the building; on a flat roof the
+      // strips are wide.
+      float ang = floor(vAxis / 100.0) / 1000.0; // loods: the axis in milliradians, packed with the height
+      vec2 dir = vec2(cos(ang), sin(ang));
+      float across = dot(vUv2, vec2(-dir.y, dir.x)), along = dot(vUv2, dir);
+      bool isFlat = vWorldNormal.y >= 0.97;
+      float t = mod(across, isFlat ? 4.0 : 3.0);
+      c *= 0.92;
+      if (mod(across, 0.9) < 0.07) c *= 0.88;
+      if (t > (isFlat ? 1.0 : 1.6) && t < (isFlat ? 3.2 : 2.6) && mod(along, 12.0) > 0.8) {
+        c = vec3(0.55, 0.72, 0.78);
+        if (mod(along, 1.5) < 0.1) c = vec3(0.4, 0.46, 0.5);
+        if (t < (isFlat ? 1.15 : 1.7)) c = vec3(0.4, 0.46, 0.5);
+      }
     } else if (type == 3) {
       // Venlo greenhouse roof: rows of glass ridges, lit on one side.
       vec2 dir = vec2(cos(vAxis), sin(vAxis));
@@ -359,7 +457,9 @@ async function makeBuildings() {
     kind[i] = v[o + 8];
     const b = v[o + 9], m = meta[b];
     type[i] = TYPES[m.kind] ?? 0;
-    axis[i] = m.kind === 'greenhouse' || m.kind === 'station' || m.kind === 'hall' ? m.axis : m.kind === 'factory' ? m.height : (m.param ?? m.axis);
+    axis[i] = m.kind === 'greenhouse' || m.kind === 'station' || m.kind === 'hall' ? m.axis : m.kind === 'factory' || m.kind === 'cinema' || m.kind === 'mosque' ? m.height
+      // loods needs both: its axis (for the roof) in whole milliradians times 100, plus its height (under 100 m).
+      : m.kind === 'loods' ? Math.round((((m.axis % Math.PI) + Math.PI) % Math.PI) * 1000) * 100 + Math.min(99, m.height) : (m.param ?? m.axis);
     frame.set([frames[b].r, frames[b].g, frames[b].b], i * 3);
     const c = kind[i] === 2 ? roofs[b] : walls[b];
     col.set([c.r, c.g, c.b], i * 3);

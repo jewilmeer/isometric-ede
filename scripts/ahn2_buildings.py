@@ -18,7 +18,7 @@ from shapely.geometry import Polygon
 from skimage import measure
 
 from config import CHUNK, NX, NY, RAW, XMIN, YMAX
-from era import AHN, changed
+from era import AHN, changed, rail_zone
 
 RES = 0.5
 BAND = 2.5
@@ -87,7 +87,11 @@ def find(kept_rings):
     now = np.where(np.isnan(now_dsm), now_dtm, now_dsm) - now_dtm
     gone = (ndi.median_filter(dsm, 3) - dtm > 3.0) & (ndi.median_filter(now, 3) < 1.5)
     near |= ndi.binary_dilation(ndi.binary_opening(gone, iterations=2), iterations=4)
-    cand = (ndsm > 3.0) & smooth & near & ~mask_of(kept_rings, dsm.shape, grow=2)
+    zone = rail_zone()  # trains, platforms and catenary along the track are no buildings
+    zp = [p for p in getattr(zone, "geoms", [zone]) if p.geom_type == "Polygon"]
+    track = mask_of([np.asarray(p.exterior.coords) for p in zp], dsm.shape) & ~mask_of(
+        [np.asarray(i.coords) for p in zp for i in p.interiors], dsm.shape)
+    cand = (ndsm > 3.0) & smooth & near & ~mask_of(kept_rings, dsm.shape, grow=2) & ~track
     cand = ndi.binary_opening(cand, iterations=2)
     band = np.floor(ndsm / BAND).astype(np.int16)
 

@@ -139,6 +139,24 @@ def main():
     marks = json.loads(lm.read_text()) if lm.exists() else {}
     for m in marks.get("masts", []) + marks.get("chimneys", []):
         trees = trees[np.hypot(trees[:, 0] - (m["x"] - CX), trees[:, 1] - (CY - m["y"])) > 6]
+    # No trees on a bridge deck or on its ramps, over a road that runs under something, or over the motorway: the
+    # canopy model measures cars, signs and the structure there as trees.
+    from shapely import contains_xy, prepare
+    from shapely.geometry import LineString
+    from shapely.geometry import shape as geo_shape
+    from shapely.ops import unary_union
+
+    from era import under_polygons
+
+    bar = [LineString(b["path"]).buffer(b["width"] / 2 + 1.0) for b in marks.get("bridges", [])]
+    bar.append(under_polygons().buffer(1.0))
+    bar += [geo_shape(f["geometry"]).buffer(1.5) for f in json.load(open(RAW / "bgt_wegdeel.geojson"))["features"]
+            if f["properties"].get("functie") == "rijbaan autosnelweg"]
+    bar = unary_union(bar)
+    prepare(bar)
+    onbar = contains_xy(bar, trees[:, 0] + CX, CY - trees[:, 1])
+    trees = trees[~onbar]
+    print(f"{int(onbar.sum())} trees dropped from bridges and the motorway")
     trees.tofile(BUILD / "trees.bin")
     print(f"{len(trees)} trees ({len(extra)} from BGT), {int(kind.sum())} evergreen, mean radius {radius.mean():.1f} m")
 
