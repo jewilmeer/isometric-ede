@@ -1333,7 +1333,9 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   };
 
   let laneView = 0;
+  let mills = [];
   function addTraffic(T) {
+    mills = (T.mills || []).map((m) => ({ ...m, a: Math.random() * 6 }));
     exits = new Set(T.exits);
     laneView = viewIn(T.views);
     onView.push(() => (laneView = viewIn(T.views)));
@@ -2156,6 +2158,39 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
   }
 
   // Movers (and the birds, given inView) onto a canvas that shows the map view b at k device pixels per map pixel.
+  // Windmill sails: four arms in the vertical plane across the facing direction, turning counter-clockwise seen from the front.
+  function drawMills(ctx, inView, t) {
+    for (const m of mills) {
+      const th = (m.facing * Math.PI) / 180, dx = Math.sin(th), dz = -Math.cos(th), rx = -Math.cos(th), rz = -Math.sin(th);
+      const hx = m.x + dx * 1.5, hz = m.z + dz * 1.5, L = m.span / 2;
+      if (!inView(hx, hz, m.hub)) continue;
+      const P = (u, v, off) => toPx(hx + rx * u + dx * off, hz + rz * u + dz * off, m.hub + v);
+      const spin = ((t / 6) % 1) * Math.PI * 2;
+      for (let i = 0; i < 4; i++) {
+        const a = spin + (i * Math.PI) / 2, c = Math.cos(a), s = Math.sin(a);
+        const at = (f, w) => P(c * f * L - s * w, s * f * L + c * w, 0);
+        poly(ctx, [at(0.2, 0.1), at(1, 0.1), at(1, 2.1), at(0.2, 2.1)], 'rgba(236,232,222,0.9)');
+        ctx.beginPath();
+        for (let f = 0.2; f <= 1.001; f += 0.16) ctx.moveTo(...at(f, 0.1)), ctx.lineTo(...at(f, 2.1));
+        ctx.lineWidth = 0.5;
+        ctx.strokeStyle = 'rgba(70,56,44,0.6)';
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(...at(0, 0));
+        ctx.lineTo(...at(1.02, 0));
+        ctx.lineWidth = 1.1;
+        ctx.lineCap = 'butt';
+        ctx.strokeStyle = '#4a3a2e';
+        ctx.stroke();
+      }
+      const [px, py] = P(0, 0, 0);
+      ctx.beginPath();
+      ctx.arc(px, py, 1.2, 0, Math.PI * 2);
+      ctx.fillStyle = '#3a3028';
+      ctx.fill();
+    }
+  }
+
   function paint(ctx, b, k, seen, inView) {
     seen.sort((p, q) => q[0] - p[0]); // the far ones first
     let target = ctx;
@@ -2177,6 +2212,7 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
     if (inView) drawPuffs(target, inView);
     if (inView) for (const f of flocks) for (const bird of f.birds) drawBird(target, f, bird, inView);
     if (inView) for (const c of [...choppers].sort((p, q) => depthOf(q.x, q.z) - depthOf(p.x, p.z))) drawChopper(target, c, inView);
+    if (inView && k >= 0.25) drawMills(target, inView, performance.now() / 1000);
     if (k > 1) {
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(off, 0, 0, ow, oh, (ox - b.x) * k, (oy - b.y) * k, ow * k, oh * k);

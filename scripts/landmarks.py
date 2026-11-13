@@ -246,6 +246,11 @@ BUILDINGS = [
 # Points without a building of their own.
 POINTS = [
     {
+        "name": "Molen Concordia", "at": (174115.0, 450992.0), "kind": "Molen · rijksmonument",
+        "text": "Een stellingmolen aan de Molenstraat, gebouwd in 1865-1868 op de plek waar al in 1607 een molen stond. De familie Van de Craats had hem van 1868 tot 1999, daarna kwam hij aan de gemeente. In 1889 kwam er een stoommachine naast, later een dieselmotor; in de crisisjaren perste hij ook lijn- en koolzaadolie. In 1962 gingen de wieken eraf en kwam er een graansilo naast; de gemeente liet hem na 2005 restaureren. Nu draait hij weer en is hij op maandag en zaterdag open.",
+        "more": "https://en.wikipedia.org/wiki/Concordia,_Ede",
+    },
+    {
         "name": "P+R-garage",
         "at": (174658.7, 448644.7),
         "since": 2026,
@@ -354,6 +359,10 @@ STYLED = [
 
 # The north wall of the Carré, which stood free between the demolition and the muurwoningen (AM, Op Enka: the photo
 # of 2010): a brick wall two storeys high with empty window openings, with the arch to the Krimperij in it.
+MILLS = [
+    {"name": "De Keetmolen", "at": (174436.0, 449084.0), "hub": 12.6, "span": 24.0, "facing": 225},
+    {"name": "Concordia", "at": (174115.0, 450992.0), "hub": 17.0, "span": 22.0, "facing": 225},
+]
 WALLS = [{"until": 2022, "path": [(175010.6, 448626.8), (175226.3, 448556.4)], "h": 10.5, "thick": 0.6,
           "gaps": [(175115, 448590, 7.0)], "wall": (128, 70, 54)},
          # The east wall, from the north-east corner past the corner that still stands, along the houses of 2022.
@@ -629,6 +638,7 @@ def main():
             out["buildings"][pid] = {"name": name, **{k: v for k, v in b.items() if k not in ("addrs", "near", "built_from", "name")}}
         print(f"{name}: restyled {len(pids)}")
     out["walls"] = list(filter(in_era, WALLS))
+    out["mills"] = MILLS
     out["new_buildings"] = list(filter(in_era, NEW_BUILDINGS))
     out["chimneys"] = [{**{k: v for k, v in c.items() if k != "at"}, "x": c["at"][0], "y": c["at"][1]} for c in filter(in_era, CHIMNEYS)]
     out["stations"] = list(filter(in_era, STATIONS))

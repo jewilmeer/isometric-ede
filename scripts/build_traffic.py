@@ -436,6 +436,12 @@ def hidden(lanes_):
             ln["t"].append(stretches_where(trees[at] & ~buildings[at] & ~up, s))
 
 
+def mills():
+    marks = json.loads((BUILD / "landmarks.json").read_text()) if (BUILD / "landmarks.json").exists() else {}
+    return [{"name": m["name"], "x": m["at"][0] - CX, "z": CY - m["at"][1], "hub": m["hub"], "span": m["span"], "facing": m["facing"]}
+            for m in marks.get("mills", [])]
+
+
 def play_areas():
     """Points every meter inside each play area, and per view which of them a building hides: a depth test against the
     building triangles nearby, so children on a roof terrace disappear behind the higher part of the building too."""
@@ -488,7 +494,7 @@ def main():
     hidden(out)
     for ln in out:
         ln["p"] = [[round(float(x), 1), round(float(z), 1)] for x, z in ln["p"]]
-    (BUILD / "traffic.json").write_text(json.dumps({"views": list(VIEWS), "lanes": out, "exits": sorted(clip.exits), "play": play_areas()}, separators=(",", ":")))
+    (BUILD / "traffic.json").write_text(json.dumps({"views": list(VIEWS), "lanes": out, "exits": sorted(clip.exits), "play": play_areas(), "mills": mills()}, separators=(",", ":")))
     km = sum(np.linalg.norm(np.diff(np.array(ln["p"]), axis=0), axis=1).sum() for ln in out) / 1000
     share = sum(sum(b - a for a, b in ln["h"][0]) for ln in out) / 1000 / km
     leafy = sum(sum(b - a for a, b in ln["t"][0]) for ln in out) / 1000 / km
