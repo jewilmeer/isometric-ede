@@ -92,13 +92,6 @@ BUILDINGS = [
         "text": "Het hoofdgebouw van de fabriek, met de grote boog waar je het terrein op ging en bovenin de letters ENKA. Toen de bouw van de wijk begon, had de Grondbank er haar kantoor, en regelde de hoofduitvoerder van daaruit ook de evenementen in de leegstaande Westhal. Bouwbedrijf Kreeft restaureerde het voor BOEi.",
         "more": "https://www.am.nl/wp-content/uploads/2024/03/OP-Enka-waar-elke-steen-een-verhaal-vertelt.pdf",
     },
-    {
-        "name": "Poort naar de Krimperij",
-        "at": (175115, 448590),
-        "kind": "Fabrieksmuur · ca. 1922",
-        "text": "De boog in de oude noordmuur van de fabriek, nu de doorgang van het park naar de Krimperij. De bijna honderd jaar oude muur is geen monument, maar was nog goed genoeg om te behouden: achter de gevel met de oude raampartijen staan nu nieuwe woningen, de muurwoningen van het Carré.",
-        "more": "https://www.am.nl/wp-content/uploads/2024/03/OP-Enka-waar-elke-steen-een-verhaal-vertelt.pdf",
-    },
     # The new Ketelhuis next to the boiler chimney, after the boiler house that stood there.
     {
         "name": "Het Ketelhuis (Stoer)", "since": 2020,
@@ -306,7 +299,7 @@ POINTS = [
 # Series in the viewer's panel: a walk past these places, starting with the one nearest the Enka chimney.
 CATEGORIES = [
     ("enka", "Enka-terrein", [
-        "Spinnerijschoorsteen", "Ketelschoorsteen", "Het Ketelhuis (Stoer)", "Kantinegebouw", "Gymlokaal Enka", "Poortgebouw", "Poort naar de Krimperij",
+        "Spinnerijschoorsteen", "Ketelschoorsteen", "Het Ketelhuis (Stoer)", "Kantinegebouw", "Gymlokaal Enka", "Poortgebouw",
         "Westhal", "Hoek van het Carré", "Bitterzoutloods", "De padden van het Enka-terrein", "Langzaamverkeerbrug", "De Reehorst",
     ]),
     ("kazernes", "Kazernes", [
