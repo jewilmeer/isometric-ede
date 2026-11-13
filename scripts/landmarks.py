@@ -346,6 +346,8 @@ STYLED = [
     # The muurwoningen behind the old north wall of the Carré: their outside is the factory facade.
     {"since": 2022, "name": "Muurwoningen Carré", "near": [(175010.6, 448626.8), (175226.3, 448556.4)], "built_from": 2010,
      "style": "factory", "wall": (118, 66, 52), "roof": (92, 94, 98), "frame": (232, 232, 226)},
+    {"since": 2022, "name": "Muurwoningen Carré oost", "near": [(175224.0, 448552.0), (175189.5, 448462.0)], "built_from": 2022,
+     "style": "factory", "wall": (118, 66, 52), "roof": (92, 94, 98), "frame": (232, 232, 226)},
     {"since": 2022, "name": "Muurwoningen Carré west", "near": [(174970.8, 448520.2), (174987.0, 448572.6), (174994.9, 448598.0)], "built_from": 2010,
      "style": "factory", "wall": (118, 66, 52), "roof": (92, 94, 98), "frame": (232, 232, 226)},
 ]
@@ -354,6 +356,8 @@ STYLED = [
 # of 2010): a brick wall two storeys high with empty window openings, with the arch to the Krimperij in it.
 WALLS = [{"until": 2022, "path": [(175010.6, 448626.8), (175226.3, 448556.4)], "h": 10.5, "thick": 0.6,
           "gaps": [(175115, 448590, 7.0)], "wall": (128, 70, 54)},
+         # The east wall, from the north-east corner past the corner that still stands, along the houses of 2022.
+         {"until": 2022, "path": [(175224.0, 448552.0), (175189.5, 448462.0)], "h": 10.5, "thick": 0.6, "wall": (128, 70, 54)},
          # The west wall, from the south up to the Poortgebouw (pointed out by the user).
          {"until": 2022, "path": [(174970.8, 448520.2), (174987.0, 448572.6), (174994.9, 448598.0)], "h": 10.5, "thick": 0.6,
           "wall": (128, 70, 54)}]
