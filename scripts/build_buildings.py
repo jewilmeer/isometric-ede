@@ -627,6 +627,9 @@ def main():
         ground = attrs.get("b3_h_maaiveld") or 0.0
         lod0 = parent["geometry"][0]["boundaries"][0][0]
         fp = V[lod0][:, :2]
+        # The download covers today's area, the largest; an earlier era's area is smaller.
+        if not (XMIN <= fp[:, 0].mean() <= XMAX and YMIN <= fp[:, 1].mean() <= YMAX):
+            continue
         footprints.append([[round(x - CX, 2), round(CY - y, 2)] for x, y in fp])
 
         if "sphere" in named.get(parent_id, {}):

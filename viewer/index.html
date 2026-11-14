@@ -780,7 +780,8 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       location.replace(location.pathname + (q.toString() ? `?${q}` : '') + location.hash);
       return;
     }
-    if (era) M.views = era.views;
+    // Each era has its own image size, scale and area.
+    if (era) M = { ...M, ...era };
     setupEras(era);
     // A link may ask for another direction (?view=135); the map opens with that view's tiles.
     const want = new URLSearchParams(location.search).get('view');

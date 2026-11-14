@@ -12,6 +12,7 @@ prepare() {  # every preprocessing step, into data/build or, with ERA set, data/
   (builtin cd scripts && uv run --quiet build_buildings.py)
   (builtin cd scripts && uv run --quiet build_trees.py 2>&1 | grep -v GDAL_NODATA)
   (builtin cd scripts && uv run --quiet build_ground.py)
+  (builtin cd scripts && uv run --quiet build_sunken.py 2>&1 | grep -v GDAL_NODATA)
   (builtin cd scripts && python3 build_places.py)
   (builtin cd scripts && uv run --quiet --with numpy python build_hotspots.py)
   (builtin cd scripts && python3 build_routes.py)

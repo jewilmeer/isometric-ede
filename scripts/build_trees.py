@@ -19,7 +19,7 @@ from skimage.segmentation import watershed
 
 from aerial import load_aerial
 from era import AHN
-from config import ERA, BUILD, CHUNK, CX, CY, GROUND_RES, NX, NY, RAW, XMIN, YMAX
+from config import ERA, chunk_name, BUILD, CHUNK, CX, CY, GROUND_RES, NX, NY, RAW, XMIN, YMAX
 
 RES = 0.5
 
@@ -29,7 +29,7 @@ def mosaic(cov, source=AHN):
     out = np.full((NY * px, NX * px), np.nan, dtype=np.float32)
     for ix in range(NX):
         for iy in range(NY):
-            a = tifffile.imread(source / f"{cov}_{ix}_{iy}.tif").astype(np.float32)
+            a = tifffile.imread(source / f"{cov}_{chunk_name(ix, iy)}.tif").astype(np.float32)
             a[(a > 1000) | (a < -100)] = np.nan
             row = (NY - 1 - iy) * px
             out[row : row + px, ix * px : ix * px + px] = a[:px, :px]

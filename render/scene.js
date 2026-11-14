@@ -582,23 +582,39 @@ async function makeTrees() {
 // Sunken areas (landmarks.json "sunken"): ground and roads are cut out of them at y = 0 by a point-in-polygon test
 // in the fragment shader, and drawn again `depth` lower, only inside, plus concrete walls around the edge.
 
-const MAX_SUNKEN = 4, MAX_VERTS = 48;
+const MAX_SUNKEN = 10, MAX_VERTS = 64; // 10 × 64 points as vec2 uniforms: more would exceed the GPU limit of 1024
 const sunkenUniforms = {
   uSunkenPts: { value: Array.from({ length: MAX_SUNKEN * MAX_VERTS }, () => new THREE.Vector2()) },
   uSunkenN: { value: new Array(MAX_SUNKEN).fill(0) },
 };
-let sunken = []; // [{ depth, pts: [[x, z], ...] }] in local coordinates
+let sunken = []; // [{ depth, pts: [[x, z], ...], grid?, depthAt(x, z) }] in local coordinates
 
+// The sunken areas: the flat ones of landmarks.json and the underpasses of scripts/build_sunken.py, whose floor follows
+// a grid of depths ("grid": x0, y0, res, w, h and z[j * w + i] in m below ground for the cell centre (x0 + (i + .5)
+// res, y0 + (j + .5) res), RD) so that the ramps slope.
 async function loadSunken(area) {
   let list = [];
   try {
     const lm = await (await fetch(`${DATA}/landmarks.json`)).json();
     list = Array.isArray(lm.sunken) ? lm.sunken : [];
   } catch (e) { /* no landmarks in this era */ }
+  try {
+    const more = await (await fetch(`${DATA}/sunken.json`)).json();
+    if (Array.isArray(more)) list = list.concat(more);
+  } catch (e) { /* no underpasses in this era */ }
   sunken = list.slice(0, MAX_SUNKEN).map((s) => {
     let pts = s.area.map(([X, Y]) => [X - area.cx, area.cy - Y]);
     if (pts.length > 1 && pts[0][0] === pts.at(-1)[0] && pts[0][1] === pts.at(-1)[1]) pts = pts.slice(0, -1);
-    return { depth: s.depth || 1.3, pts: pts.slice(0, MAX_VERTS) };
+    const out = { depth: s.depth || 1.3, pts: pts.slice(0, MAX_VERTS), grid: s.grid || null };
+    const g = s.grid;
+    out.depthAt = !g ? () => out.depth : (x, z) => {
+      const fi = Math.min(Math.max((x + area.cx - g.x0) / g.res - 0.5, 0), g.w - 1);
+      const fj = Math.min(Math.max((area.cy - z - g.y0) / g.res - 0.5, 0), g.h - 1);
+      const i = Math.min(Math.floor(fi), g.w - 2), j = Math.min(Math.floor(fj), g.h - 2), a = fi - i, b = fj - j;
+      const q = (ii, jj) => g.z[Math.max(jj, 0) * g.w + Math.max(ii, 0)];
+      return (q(i, j) * (1 - a) + q(i + 1, j) * a) * (1 - b) + (q(i, j + 1) * (1 - a) + q(i + 1, j + 1) * a) * b;
+    };
+    return out;
   }).filter((s) => s.pts.length >= 3);
   sunken.forEach((s, i) => {
     sunkenUniforms.uSunkenN.value[i] = s.pts.length;
@@ -651,22 +667,91 @@ function patchSunken(mat, inverse) {
 }
 
 // Duplicates every mesh of `group` that overlaps a sunken polygon, lowered by its depth and showing only the inside.
+// Where the floor follows a depth grid, the copy is tessellated to about a meter (ground planes as a grid, road
+// triangles split, kerb lines cut) and every vertex is lowered by the depth at its own place.
+const PIT_CELL = 1.0;
+
+function tessellatedPit(m, s, box) {
+  const g = m.geometry, pos = g.attributes.position, uv = g.attributes.uv;
+  const P = [], U = [], idx = [];
+  const bx0 = box.min.x, bx1 = box.max.x, bz0 = box.min.z, bz1 = box.max.z;
+  if (g.type === 'PlaneGeometry') {
+    const size = g.parameters.width, px = m.position.x, pz = m.position.z;
+    const x0 = Math.max(bx0, px - size / 2), x1 = Math.min(bx1, px + size / 2), z0 = Math.max(bz0, pz - size / 2), z1 = Math.min(bz1, pz + size / 2);
+    const nx = Math.ceil((x1 - x0) / PIT_CELL), nz = Math.ceil((z1 - z0) / PIT_CELL);
+    if (nx < 1 || nz < 1) return null;
+    for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) {
+      const x = x0 + ((x1 - x0) * i) / nx, z = z0 + ((z1 - z0) * j) / nz;
+      P.push(x, m.position.y - s.depthAt(x, z), z);
+      U.push((x - (px - size / 2)) / size, 0.5 + (pz - z) / size);
+    }
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      const a = j * (nx + 1) + i, b = a + 1, c = a + nx + 1, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+    geo.setIndex(idx);
+    return { geo, position: new THREE.Vector3(0, 0, 0), rotation: new THREE.Euler(0, 0, 0) };
+  }
+  const vert = (k) => ({ x: pos.getX(k), y: pos.getY(k), z: pos.getZ(k), u: uv.getX(k), v: uv.getY(k) });
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2, u: (a.u + b.u) / 2, v: (a.v + b.v) / 2 });
+  const overlaps = (...vs) => Math.max(...vs.map((p) => p.x)) >= bx0 && Math.min(...vs.map((p) => p.x)) <= bx1 && Math.max(...vs.map((p) => p.z)) >= bz0 && Math.min(...vs.map((p) => p.z)) <= bz1;
+  const out = (p) => { P.push(p.x, p.y - s.depthAt(p.x, p.z), p.z); U.push(p.u, p.v); };
+  const lines = m.isLineSegments;
+  const split = (a, b, c, depth) => {
+    if (!overlaps(a, b, c)) return;
+    const e = [[a, b], [b, c], [c, a]].map(([p, q]) => Math.hypot(p.x - q.x, p.z - q.z));
+    const k = e.indexOf(Math.max(...e));
+    if (e[k] <= 2 * PIT_CELL || depth > 14) { out(a); out(b); out(c); return; }
+    // Split the longest edge at its middle.
+    const [p, q, r] = k === 0 ? [a, b, c] : k === 1 ? [b, c, a] : [c, a, b], n = mid(p, q);
+    split(p, n, r, depth + 1);
+    split(n, q, r, depth + 1);
+  };
+  const cut = (a, b, depth) => {
+    if (!overlaps(a, b)) return;
+    if (Math.hypot(a.x - b.x, a.z - b.z) <= PIT_CELL || depth > 12) { out(a); out(b); return; }
+    const n = mid(a, b);
+    cut(a, n, depth + 1);
+    cut(n, b, depth + 1);
+  };
+  if (lines) for (let k = 0; k + 1 < pos.count; k += 2) cut(vert(k), vert(k + 1), 0);
+  else for (let k = 0; k + 2 < pos.count; k += 3) split(vert(k), vert(k + 1), vert(k + 2), 0);
+  if (!P.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+  return { geo, position: m.position.clone(), rotation: m.rotation.clone() };
+}
+
 function addPits(group) {
   for (const s of sunken) {
     const xs = s.pts.map((p) => p[0]), zs = s.pts.map((p) => p[1]);
     const box = new THREE.Box3(new THREE.Vector3(Math.min(...xs), -1, Math.min(...zs)), new THREE.Vector3(Math.max(...xs), 1, Math.max(...zs)));
     for (const m of [...group.children]) {
-      if (!m.userData.cut) continue;
+      if (!m.userData.cut || m.userData.pit) continue;
       m.updateMatrixWorld(true);
       const b = new THREE.Box3().setFromObject(m);
       if (!b.intersectsBox(box)) continue;
       const mat = m.material.clone();
       mat.onBeforeCompile = undefined;
       patchSunken(mat, true);
-      const pit = new THREE.Mesh(m.geometry, mat);
-      pit.position.copy(m.position);
-      pit.rotation.copy(m.rotation);
-      pit.position.y -= s.depth;
+      let pit;
+      if (s.grid) {
+        const t = tessellatedPit(m, s, box);
+        if (!t) continue;
+        pit = m.isLineSegments ? new THREE.LineSegments(t.geo, mat) : new THREE.Mesh(t.geo, mat);
+        pit.position.copy(t.position);
+        pit.rotation.copy(t.rotation);
+      } else {
+        pit = m.isLineSegments ? new THREE.LineSegments(m.geometry, mat) : new THREE.Mesh(m.geometry, mat);
+        pit.position.copy(m.position);
+        pit.rotation.copy(m.rotation);
+        pit.position.y -= s.depth;
+      }
+      pit.userData.pit = true;
       group.add(pit);
     }
   }
@@ -686,15 +771,22 @@ function makeSunkenWalls() {
       const dx = bx - ax, dz = bz - az, len = Math.hypot(dx, dz);
       if (len < 1e-6) return;
       const nx = sgn * -dz / len, nz = sgn * dx / len;
-      const quad = (y0, y1, c) => {
-        let v = [[ax, y0, az], [bx, y0, bz], [bx, y1, bz], [ax, y1, az]];
-        // Winding: (b - a) x up must point along the normal, otherwise flip.
-        // (dx,0,dz) x (0,1,0) = (-dz, 0, dx)
-        if (-dz * nx + dx * nz < 0) v = [v[1], v[0], v[3], v[2]];
-        for (const k of [0, 1, 2, 0, 2, 3]) { pos.push(...v[k]); nor.push(nx, 0, nz); col.push(...c); }
-      };
-      quad(-s.depth, -0.14, WALL);
-      quad(-0.14, 0.0, COPING);
+      // Along the edge in steps of about a meter, from the floor up to the ground; none where the floor is hardly lower.
+      const steps = Math.max(1, Math.ceil(len / PIT_CELL));
+      for (let k = 0; k < steps; k++) {
+        const x0 = ax + (dx * k) / steps, z0 = az + (dz * k) / steps, x1 = ax + (dx * (k + 1)) / steps, z1 = az + (dz * (k + 1)) / steps;
+        // Just inside the edge, so the floor there is the one the wall stands on.
+        const d0 = s.depthAt(x0 + nx * 0.3, z0 + nz * 0.3), d1 = s.depthAt(x1 + nx * 0.3, z1 + nz * 0.3);
+        if (Math.max(d0, d1) < 0.3) continue;
+        const mk = (ya0, yb0, ya1, yb1, c) => {
+          let v = [[x0, ya0, z0], [x1, ya1, z1], [x1, yb1, z1], [x0, yb0, z0]];
+          if (-dz * nx + dx * nz < 0) v = [v[1], v[0], v[3], v[2]];
+          for (const kk of [0, 1, 2, 0, 2, 3]) { pos.push(...v[kk]); nor.push(nx, 0, nz); col.push(...c); }
+        };
+        const c0 = Math.min(0.14, d0 / 2), c1 = Math.min(0.14, d1 / 2);
+        mk(-d0, -c0, -d1, -c1, WALL);
+        mk(-c0, 0, -c1, 0, COPING);
+      }
     });
   }
   if (!pos.length) return group;

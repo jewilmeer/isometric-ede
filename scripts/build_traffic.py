@@ -371,6 +371,41 @@ def on_bridges(lanes_):
             ln["y"] = [round(y, 2) for y in np.maximum(ys, ln.get("y", 0))]
 
 
+def on_sunken(lanes_):
+    """Negative heights for the lanes in the sunken underpasses and on their ramps (scripts/build_sunken.py): the depth of
+    the floor under each point of p. A lane that touches one gets a point every 2 m first, as the floor slopes."""
+    f = BUILD / "sunken.json"
+    for s in json.loads(f.read_text()) if f.exists() else []:
+        g = s.get("grid")
+        if not g:
+            continue
+        z = np.asarray(g["z"], dtype=float).reshape(g["h"], g["w"])
+        area = Polygon([(x - CX, CY - y) for x, y in s["area"]]).buffer(1.5)
+        prepare(area)
+
+        def depth(p):  # bilinear, p in local meters
+            fi = np.clip((p[:, 0] + CX - g["x0"]) / g["res"] - 0.5, 0, g["w"] - 1)
+            fj = np.clip((CY - p[:, 1] - g["y0"]) / g["res"] - 0.5, 0, g["h"] - 1)
+            i, j = np.minimum(fi.astype(int), g["w"] - 2), np.minimum(fj.astype(int), g["h"] - 2)
+            a, b = fi - i, fj - j
+            return (z[j, i] * (1 - a) + z[j, i + 1] * a) * (1 - b) + (z[j + 1, i] * (1 - a) + z[j + 1, i + 1] * a) * b
+
+        for ln in lanes_:
+            p = np.asarray(ln["p"], dtype=float)
+            if not area.intersects(LineString(p)):
+                continue
+            cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))]
+            keep = np.unique(np.r_[np.arange(0, cum[-1], 2.0), cum])
+            q = np.c_[np.interp(keep, cum, p[:, 0]), np.interp(keep, cum, p[:, 1])]
+            h = np.where(contains_xy(area, q[:, 0], q[:, 1]), -depth(q), 0.0)
+            if (h > -0.3).all():
+                continue
+            if "y" in ln:
+                h = np.minimum(h, np.interp(keep, cum, ln["y"]))
+            ln["p"] = q
+            ln["y"] = [round(float(v), 2) for v in h]
+
+
 def decks():
     """Where a bridge deck or a roof lies over the ground, in local meters: the roads and paths that OpenStreetMap marks
     as a bridge, as wide as a road or a path, the station roofs, and the bridges in landmarks.json where they are more
@@ -490,6 +525,7 @@ def main():
         prepare(gone)
         out = [ln for ln in out if not contains_xy(gone, *np.asarray(ln["p"]).mean(0))]
     DECK_LANES[:] = [ln for ln in out if ln.get("layer", 0) > 0]
+    on_sunken(out)
     on_bridges(out)
     hidden(out)
     for ln in out:

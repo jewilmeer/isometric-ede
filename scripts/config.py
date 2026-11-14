@@ -37,9 +37,19 @@ def in_era(entry):
     year = ERA_CONF.get("built", 9999)
     return entry.get("since", 0) <= year and year < entry.get("until", 99999)
 
-# Ede, 4 x 4 km around the Enka-terrein: the Enka chimney (175084, 448248) sits in the south-east quarter, with
-# station Ede-Wageningen in the middle and the old centre around the Oude Kerk at the top.
-XMIN, YMIN, XMAX, YMAX = 172750, 447000, 176750, 451000
+# Ede around the Enka-terrein: the Enka chimney (175084, 448248) sits in the south-east quarter of the old 4 x 4 km,
+# with station Ede-Wageningen in the middle and the old centre around the Oude Kerk at the top. Each era has its own
+# area, all on the same 500 m grid (the chunks of the raw data are named after their RD corner, so they are shared).
+# Today's map is the largest (6 x 5 km, from Kernhem to Veldhuizen-Oost); the earlier years only need the part the old
+# maps and AHN2 cover.
+AREAS = {
+    None: (170750, 447000, 176750, 452000),
+    "2009": (174250, 447500, 176750, 450500),
+    "1987": (174250, 447500, 176750, 450500),
+}
+AREA = AREAS[ERA]
+XMIN, YMIN, XMAX, YMAX = AREA
+NOW_AREA = AREAS[None]  # what the bbox downloads cover
 CX, CY = (XMIN + XMAX) / 2, (YMIN + YMAX) / 2
 
 # The BAG woonplaats for addresses, and its postcode areas (the address search pages no further than 10000 results).
@@ -49,6 +59,11 @@ POSTCODES = ("6711", "6712", "6713", "6714", "6715", "6716", "6717", "6718")
 # Downloads and ground textures come in square chunks of this many meters.
 CHUNK = 500
 NX, NY = int((XMAX - XMIN) / CHUNK), int((YMAX - YMIN) / CHUNK)
+
+
+def chunk_name(ix, iy):
+    """The name of a chunk's raw data: the RD of its lower-left corner, so that every era's area finds the same files."""
+    return f"{XMIN + ix * CHUNK}_{YMIN + iy * CHUNK}"
 
 # Ground raster resolution in meters per pixel.
 GROUND_RES = 0.25

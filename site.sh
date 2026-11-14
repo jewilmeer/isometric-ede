@@ -59,6 +59,12 @@ views, eras = views.split(), eras.split()
 m = json.load(open(f"out/tiles-{scale}/layout.json"))
 
 
+def geometry(era):
+    """The size, scale, top and area of an era's image: each era has its own area (scripts/config.py AREAS)."""
+    lay = json.load(open(f"out/tiles-{scale}{'-' + era if era else ''}/layout.json"))
+    return {k: lay[k] for k in ("width", "height", "scale", "top", "area")}
+
+
 def views_of(era):
     out = []
     for look in views:
@@ -75,12 +81,12 @@ def views_of(era):
 # Today's views stay at the top level too, for viewers that know no eras.
 m["views"] = views_of("")
 m.update({k: m["views"][0][k] for k in ("tiles", "objects") if k in m["views"][0]})
-m["eras"] = [{"key": "now", "label": "Nu", "label_en": "Now", "views": m["views"]}]
+m["eras"] = [{"key": "now", "label": "Nu", "label_en": "Now", "views": m["views"], **geometry("")}]
 for era in eras:
     v = views_of(era)
     if v and os.path.isdir(f"{site}/{era}"):
         label = ERAS[era].get("label", era)
-        m["eras"].append({"key": era, "label": label, "label_en": ERAS[era].get("label_en", label), "views": v, "data": f"{era}/"})
+        m["eras"].append({"key": era, "label": label, "label_en": ERAS[era].get("label_en", label), "views": v, "data": f"{era}/", **geometry(era)})
 json.dump(m, open(f"{site}/map.json", "w"))
 PY
 cp viewer/index.html viewer/en.json viewer/og.png data/build/places.json data/build/hotspots.json data/build/routes.json data/build/history.json data/build/traffic.json data/build/trains.json "$SITE/"
