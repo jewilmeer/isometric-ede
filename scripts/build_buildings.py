@@ -706,6 +706,13 @@ def main():
     add_monuments(verts, meta, footprints, landmarks.get("monuments", []))
     texture_roofs(aerial, meta)
     arr = np.concatenate(verts).astype(np.float32)
+    # Whatever lies off this era's map (old buildings and bridges found in data that covers more): left out.
+    hx, hz = (XMAX - XMIN) / 2, (YMAX - YMIN) / 2
+    b = arr[:, 9].astype(np.int64)
+    n = int(b.max()) + 1
+    cx = np.bincount(b, arr[:, 0], n) / np.maximum(np.bincount(b, None, n), 1)
+    cz = np.bincount(b, arr[:, 2], n) / np.maximum(np.bincount(b, None, n), 1)
+    arr = arr[(np.abs(cx[b]) <= hx) & (np.abs(cz[b]) <= hz)]
     arr.tofile(BUILD / "buildings.bin")
     (BUILD / "buildings.json").write_text(json.dumps(meta))
     (BUILD / "footprints.json").write_text(json.dumps(footprints))

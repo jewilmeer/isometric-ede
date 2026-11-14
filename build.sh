@@ -34,6 +34,8 @@ join() {  # tile folder, output image, bands to keep
 render() {  # an era, or nothing for today
   local era="$1" e="" look suffix
   [ -n "$era" ] && e="-$era"
+  # Start from empty tile folders: tiles of an earlier, bigger area would end up in the joined image.
+  rm -rf out/tiles-"$SCALE""$e" out/tiles-"$SCALE""$e"-v* out/tiles-"$SCALE"-objects"$e" out/tiles-"$SCALE"-objects"$e"-v*
   for look in $VIEWS; do
     node render/run.mjs all --scale "$SCALE" --tile 2048 --kuwahara 2 --look "$look" ${era:+--era "$era"}
     node render/run.mjs all --scale "$SCALE" --tile 2048 --pass objects --look "$look" ${era:+--era "$era"}
