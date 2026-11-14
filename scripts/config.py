@@ -30,6 +30,11 @@ ERAS = {
     "1987": {"label": "1987", "ahn2": True, "built": 1987, "bare": None, "topo": 1987, "paving": 15, "osm": "2012"},
 }
 ERA_CONF = ERAS.get(ERA, {})
+# The Enka terrain and the strip up to the railway, from the Klinkenbergerweg to the east fence (RD): in an earlier
+# era its ground comes from that year's topographic map, track and all, not from today's street plan
+# (scripts/build_ground.py paint_topo).
+OLD_TERRAIN = [(174600, 448860), (174600, 448190), (175000, 448170), (175460, 448140), (175460, 448580),
+               (175000, 448720), (174750, 448830)]
 
 
 def in_era(entry):

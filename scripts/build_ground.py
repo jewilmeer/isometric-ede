@@ -21,7 +21,7 @@ from scipy import ndimage as ndi
 
 from aerial import load_aerial
 from era import bare, built_after, changed
-from config import ERA, ERA_CONF, BUILD, CHUNK, CX, CY, GROUND_RES, NX as CHUNKS_X, NY as CHUNKS_Y, RAW, XMAX, XMIN, YMAX, YMIN
+from config import ERA, ERA_CONF, OLD_TERRAIN, BUILD, CHUNK, CX, CY, GROUND_RES, NX as CHUNKS_X, NY as CHUNKS_Y, RAW, XMAX, XMIN, YMAX, YMIN
 from sun import SUN_AZIMUTH, SUN_ELEVATION
 
 NX, NY = int((XMAX - XMIN) / GROUND_RES), int((YMAX - YMIN) / GROUND_RES)
@@ -201,11 +201,29 @@ def era_style(coll, props, rings, style):
     building that stood then keeps its own."""
     from shapely.geometry import Point
 
-    if ERA is None or not changed().contains(Point(np.asarray(rings[0])[:, :2].mean(0))):
+    if ERA is None:
+        return style
+    at = Point(np.asarray(rings[0])[:, :2].mean(0))
+    # The old terrain gets its ground from the topographic map (paint_topo): none of today's roads there.
+    old = bool(ERA_CONF.get("topo") or ERA_CONF.get("topo_blind")) and old_terrain().contains(at)
+    if not old and not changed().contains(at):
         return style
     if coll == "pand" and props.get("bag_pnd") in standing():
         return style
+    if props.get("functie") == "spoorbaan":
+        return style
     return "bare" if bare().contains(Point(np.asarray(rings[0])[:, :2].mean(0))) else "grass"
+
+
+@cache
+def old_terrain():
+    """config.OLD_TERRAIN in RD meters, without the railway and 8 m either side: its ballast and tracks, the yard
+    included, come from the photo."""
+    from shapely.geometry import Polygon
+
+    from era import rail_lines
+
+    return Polygon(OLD_TERRAIN).difference(rail_lines().buffer(8))
 
 
 @cache
@@ -438,6 +456,7 @@ def main():
         del dist
     if ERA is not None:
         paint_era(img, cat, n1, n2)
+    paint_sidings(img)
 
     # Darken edges between unlike surfaces so plots read as crisp shapes. Roads get their edge from their polygon.
     hard = ~np.isin(cat, list(SOFT)) & ~road
@@ -566,12 +585,66 @@ def paint_era(img, cat, n1, n2):
         lawn &= ~paving
         cat[paved], img[paved] = CAT["concrete"], np.array(STYLES["concrete"], np.float32) * (0.97 + 0.05 * n1[paved])[:, None]
     cat[lawn], img[lawn] = CAT["grass"], np.array(STYLES["grass"], np.float32) * (0.94 + 0.1 * n2[lawn])[:, None]
+    year = ERA_CONF.get("topo") or ERA_CONF.get("topo_blind")
+    if year:
+        terrain = raster(old_terrain()) & (cat != CAT["building"])
+        paint_topo(img, cat, (ch | terrain) & ~site, year, n2)
     # Sand worked over by machines: darker damp patches and the tracks of the shovels.
     tracks = (np.sin(np.arange(NX, dtype=np.float32)[None, :] * 0.35 + n2 * 40) > 0.9)
     cat[site] = CAT["bare"]
     img[site] = np.array(STYLES["bare"], np.float32) * (0.9 + 0.14 * n1[site])[:, None]
     img[site & (n2 > 0.62)] *= 0.86
     img[site & tracks] *= 0.92
+
+
+# The colours of the Kadaster's topographic maps and what they stand for on the ground (scripts/topo_fetch.py).
+TOPO_CLASSES = ["concrete", "grass", "meadow", "water", "asphalt"]
+
+
+def topo_class(rgb):
+    """Each pixel of a topographic map as an index into TOPO_CLASSES, or -1 for lettering, lines and symbols. White is
+    paved terrain (a factory yard), grey a building (paved round it), light green grassland, green vegetation, blue
+    water, orange and yellow a road."""
+    r, g, b = (rgb[..., i].astype(np.int16) for i in range(3))
+    out = np.full(r.shape, -1, np.int8)
+    grey = (np.abs(r - g) < 14) & (np.abs(g - b) < 14)
+    out[grey & (r >= 200)] = 0
+    out[grey & (r >= 120) & (r < 200)] = 0
+    out[(g > r + 15) & (g > b + 30) & (r >= 185)] = 2
+    out[(g > r + 25) & (g > b + 30) & (r < 185)] = 1
+    out[(b > r + 30) & (b >= g)] = 3
+    out[(r > 200) & (r > b + 80) & (g > 100)] = 4
+    return out
+
+
+def paint_topo(img, cat, mask, year, n2):
+    """The ground under `mask` from the topographic map of `year`: the factory yards, lawns, water and roads as they
+    were, instead of today's street plan. The map's classes are spread over its lettering and lines, softened to
+    round off the map's 1.6 m pixels, and sampled at the ground's resolution."""
+    ys, xs = np.nonzero(mask)
+    if not len(ys):
+        return
+    m = json.loads((RAW / f"topo{year}" / "mosaic.json").read_text())
+    rgb = np.array(Image.open(RAW / f"topo{year}" / "mosaic.png").convert("RGB"))
+    cls = topo_class(rgb)
+    known = cls >= 0
+    idx = ndi.distance_transform_edt(~known, return_distances=False, return_indices=True)
+    cls = cls[idx[0], idx[1]]
+    del idx, known, rgb
+    col = (XMIN + (xs + 0.5) * GROUND_RES - m["x0"]) / m["res"] - 0.5
+    row = (m["y0"] - (YMAX - (ys + 0.5) * GROUND_RES)) / m["res"] - 0.5
+    best = np.full(len(ys), -1.0, np.float32)
+    pick = np.zeros(len(ys), np.int8)
+    for k in range(len(TOPO_CLASSES)):
+        w = ndi.map_coordinates(ndi.gaussian_filter((cls == k).astype(np.float32), 0.6), [row, col], order=1)
+        better = w > best
+        best[better], pick[better] = w[better], k
+    del cls
+    for k, style in enumerate(TOPO_CLASSES):
+        sel = pick == k
+        y, x = ys[sel], xs[sel]
+        cat[y, x] = CAT[style]
+        img[y, x] = np.array(STYLES[style], np.float32) * (0.95 + 0.08 * n2[y, x])[:, None]
 
 
 @cache
@@ -598,6 +671,36 @@ def tartan(coll, props, rings):
     if props.get("plus_fysiek_voorkomen") != "kunststof" or ERA is not None:
         return None
     return "tartan" if athletics().contains(Point(np.asarray(rings[0])[:, :2].mean(0))) else None
+
+
+def paint_sidings(img):
+    """The sidings of landmarks.json "sidings": a bed of ballast, sleepers every 0.65 m and two rails 1.435 m apart."""
+    from shapely import affinity
+    from shapely.geometry import LineString
+
+    lm = BUILD / "landmarks.json"
+    for t in json.loads(lm.read_text()).get("sidings", []) if lm.exists() else []:
+        line = LineString([((x - XMIN) / GROUND_RES, (YMAX - y) / GROUND_RES) for x, y in t["path"]])
+        x0, y0, x1, y1 = (int(v) for v in line.buffer(12).bounds)
+        x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, NX), min(y1, NY)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        line = affinity.translate(line, -x0, -y0)
+        m = lambda: Image.new("L", (x1 - x0, y1 - y0), 0)
+        bed, sleepers, rails = m(), m(), m()
+        ImageDraw.Draw(bed).line(list(line.coords), fill=1, width=round(3.2 / GROUND_RES), joint="curve")
+        d = ImageDraw.Draw(sleepers)
+        for s in np.arange(0, line.length, 0.65 / GROUND_RES):
+            (ax, ay), (bx, by) = line.interpolate(s).coords[0], line.interpolate(min(s + 1, line.length)).coords[0]
+            n = np.array((by - ay, ax - bx)) / max(np.hypot(bx - ax, by - ay), 1e-6) * 1.3 / GROUND_RES
+            d.line([(ax - n[0], ay - n[1]), (ax + n[0], ay + n[1])], fill=1, width=1)
+        d = ImageDraw.Draw(rails)
+        for side in (-1, 1):
+            d.line(list(line.offset_curve(side * 0.72 / GROUND_RES).coords), fill=1, width=1)
+        sub = img[y0:y1, x0:x1]
+        sub[np.array(bed) > 0] = np.array((152, 140, 122), np.float32)
+        sub[np.array(sleepers) > 0] = np.array((112, 94, 76), np.float32)
+        sub[np.array(rails) > 0] = np.array((74, 72, 76), np.float32)
 
 
 def paint_osm(img, cat):

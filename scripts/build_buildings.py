@@ -792,6 +792,32 @@ def osm_2012(taken_rings):
     return out
 
 
+def clear_sidings(found):
+    """The found buildings with the siding of landmarks.json "sidings" cut out, 2.5 m either side: on the old map the
+    track runs right along the halls, and their outlines spill over it. Of a cut building only the largest piece stays,
+    without strips under 8 m wide: the rest was the track's own line and the hatching beside it."""
+    from shapely.geometry import LineString, Polygon
+
+    lm = BUILD / "landmarks.json"
+    sidings = json.loads(lm.read_text()).get("sidings", []) if lm.exists() else []
+    if not sidings:
+        return found
+    corridor = LineString(sidings[0]["path"]).buffer(2.5)
+    for t in sidings[1:]:
+        corridor = corridor.union(LineString(t["path"]).buffer(2.5))
+    out = []
+    for ring, h, source in found:
+        p = Polygon(ring).buffer(0)
+        if not p.intersects(corridor):
+            out.append((ring, h, source))
+            continue
+        rest = p.difference(corridor).buffer(-4, join_style="mitre").buffer(4, join_style="mitre")
+        parts = [q for q in getattr(rest, "geoms", [rest]) if q.geom_type == "Polygon" and q.area >= 12]
+        if parts:
+            out.append((np.asarray(max(parts, key=lambda q: q.area).exterior.coords)[:-1], h, source))
+    return out
+
+
 def add_demolished(verts, meta, footprints):
     """The buildings of an earlier era that have been demolished since: from the topographic map of that year
     (scripts/topo_buildings.py) or else from its AHN (scripts/ahn2_buildings.py). Where AHN2 measured nothing (the
@@ -820,6 +846,7 @@ def add_demolished(verts, meta, footprints):
         sp = Poly(station).buffer(0)
         found = [f for f in found if Poly(f[0]).buffer(0).intersection(sp).area < 0.2 * Poly(f[0]).buffer(0).area]
         found.append((station, 5.0, "station"))
+    found = clear_sidings(found)
     for ring, h, source in found:
         bi = len(meta)
         emit(verts, extrude([ring], 0.0, h), bi, 0.0)

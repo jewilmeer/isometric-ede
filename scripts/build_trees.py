@@ -152,6 +152,7 @@ def main():
     bar.append(under_polygons().buffer(1.0))
     # Nor on or by the railway: the track is kept clear, or there would be leaves on the line in autumn.
     bar.append(rail_lines().buffer(7.0))
+    bar += [LineString(t["path"]).buffer(3.5) for t in marks.get("sidings", [])]
     bar += [geo_shape(f["geometry"]).buffer(1.5) for f in json.load(open(RAW / "bgt_wegdeel.geojson"))["features"]
             if f["properties"].get("functie") == "rijbaan autosnelweg"]
     bar = unary_union(bar)
