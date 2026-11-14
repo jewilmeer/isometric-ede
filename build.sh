@@ -10,9 +10,9 @@ SCALE="${SCALE:-4}"
 prepare() {  # every preprocessing step, into data/build or, with ERA set, data/build-<era>
   (builtin cd scripts && uv run --quiet landmarks.py)
   (builtin cd scripts && uv run --quiet build_buildings.py)
-  (builtin cd scripts && uv run --quiet build_trees.py 2>&1 | grep -v GDAL_NODATA)
+  (builtin cd scripts && uv run --quiet build_trees.py 2>&1 | { grep -v GDAL_NODATA || true; })
   (builtin cd scripts && uv run --quiet build_ground.py)
-  (builtin cd scripts && uv run --quiet build_sunken.py 2>&1 | grep -v GDAL_NODATA)
+  (builtin cd scripts && uv run --quiet build_sunken.py 2>&1 | { grep -v GDAL_NODATA || true; })
   (builtin cd scripts && python3 build_places.py)
   (builtin cd scripts && uv run --quiet --with numpy python build_hotspots.py)
   (builtin cd scripts && python3 build_routes.py)
@@ -53,7 +53,7 @@ render ""
 # The earlier years: the same steps with ERA set, on AHN2 cut into chunks once (scripts/ahn2.py).
 ERAS="${ERAS-$(builtin cd scripts && python3 -c "from config import ERAS; print(*ERAS)")}"
 if [ -n "$ERAS" ]; then
-  [ -d data/raw/ahn2/chunks ] || (builtin cd scripts && uv run --quiet ahn2.py 2>&1 | grep -v GDAL_NODATA)
+  [ -d data/raw/ahn2/chunks ] || (builtin cd scripts && uv run --quiet ahn2.py 2>&1 | { grep -v GDAL_NODATA || true; })
   # The roads, railway and buildings of OpenStreetMap as they were in 2012, and the Kadaster's old topographic maps.
   (builtin cd scripts && python3 -c "import fetch; fetch.fetch_attic(); fetch.fetch_attic_buildings()")
   for year in $(builtin cd scripts && python3 -c "from config import ERAS; print(*sorted({str(v) for e in ERAS.values() for k, v in e.items() if k in ('topo', 'topo_blind')}))"); do

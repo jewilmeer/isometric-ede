@@ -166,9 +166,32 @@ def main():
     ede, centrum = STATIONS["Ede-Wageningen"], STATIONS["Ede Centrum"]
     entries = ends(pos, adj)
     hx, hz = (XMAX - XMIN) / 2, (YMAX - YMIN) / 2
-    west = [e for e in entries if pos[e[0]][0] < -hx]
-    east = [e for e in entries if pos[e[0]][0] > hx]
-    north = [e for e in entries if pos[e[0]][1] < -hz and abs(pos[e[0]][0]) <= hx]
+
+    def side(e):
+        """The edge of the map the track from this end comes in by: walk in from the end to the first point on the
+        map and see which edge it is nearest (the far ends can lie anywhere, past a corner)."""
+        prev, here = e
+        while abs(pos[here][0]) > hx or abs(pos[here][1]) > hz:
+            nxt = [n for n in adj[here] if n != prev]
+            if not nxt:
+                break
+            prev, here = here, nxt[0]
+        # Where the last stretch from outside crosses the edge.
+        (x0, z0), (x1, z1) = pos[prev], pos[here]
+        t = min([f for f in ((-hx - x0) / (x1 - x0) if x1 != x0 else 2, (hx - x0) / (x1 - x0) if x1 != x0 else 2,
+                             (-hz - z0) / (z1 - z0) if z1 != z0 else 2, (hz - z0) / (z1 - z0) if z1 != z0 else 2)
+                  if 0 <= f <= 1 and abs(x0 + f * (x1 - x0)) <= hx + 0.01 and abs(z0 + f * (z1 - z0)) <= hz + 0.01] or [1])
+        x, z = x0 + t * (x1 - x0), z0 + t * (z1 - z0)
+        return min((hx + x, "west"), (hx - x, "east"), (hz + z, "north"), (hz - z, "south"))[1], z
+
+    sides = {e: side(e) for e in entries}
+    west = [e for e in entries if sides[e][0] == "west"]
+    east = [e for e in entries if sides[e][0] == "east"]
+    north = [e for e in entries if sides[e][0] == "north"]
+    if not north and len(west) > 2:
+        # On a small map the line to Barneveld leaves by the west edge too: it is the northernmost track there.
+        north = [min(west, key=lambda e: sides[e][1])]
+        west.remove(north[0])
     assert len(west) >= 2 and len(east) >= 2 and north, (len(west), len(east), len(north))
     exit_of = lambda e: (lambda a, b: b == e[0])
 
@@ -213,7 +236,10 @@ def main():
     routes = {}
 
     def stops_on(p, stations):
-        return [{"s": round(float(platform_stop(p, platforms, STATIONS[st])), 1), "station": st} for st in stations]
+        """Stops along a route; a station off the map (it projects onto an end of the route) is left out."""
+        length = cumlen(p)[-1]
+        out = [{"s": round(float(platform_stop(p, platforms, STATIONS[st])), 1), "station": st} for st in stations]
+        return [st for st in out if 5 < st["s"] < length - 5 or st["station"] == "Ede-Wageningen"]
 
 
     def add(key, nodes, stations=()):
