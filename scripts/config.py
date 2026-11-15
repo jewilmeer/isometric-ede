@@ -30,11 +30,17 @@ ERAS = {
     "1987": {"label": "1987", "ahn2": True, "built": 1987, "bare": None, "topo": 1987, "paving": 15, "osm": "2012"},
 }
 ERA_CONF = ERAS.get(ERA, {})
-# The Enka terrain and the strip up to the railway, from the Klinkenbergerweg to the east fence (RD): in an earlier
-# era its ground comes from that year's topographic map, track and all, not from today's street plan
-# (scripts/build_ground.py paint_topo).
-OLD_TERRAIN = [(174600, 448860), (174600, 448190), (175000, 448170), (175460, 448140), (175460, 448580),
-               (175000, 448720), (174750, 448830)]
+# Terrains whose street plan has changed completely since (RD): in an earlier era their ground comes from that year's
+# topographic map, none of today's streets on it (scripts/build_ground.py paint_topo). The Enka terrain and the strip
+# up to the railway, from the Klinkenbergerweg to the east fence, track and all; and the barracks terrains, where the
+# Veluwse Poort and its new streets (the Generaal Hackettlaan through the park among them) came after 2010: the
+# Mauritskazerne with the park south of it, and the Elias Beeckman, Arthur Kool, Van Essen and Simon Stevin barracks.
+OLD_TERRAIN = [
+    [(174600, 448860), (174600, 448190), (175000, 448170), (175460, 448140), (175460, 448580), (175000, 448720), (174750, 448830)],
+    [(174560, 449845), (175010, 449845), (175020, 449000), (174780, 449000), (174730, 449490), (174560, 449500)],
+    [(175150, 450060), (175570, 450080), (175900, 450130), (175915, 450370), (176270, 450370), (176270, 449840), (176000, 449790),
+     (175980, 449740), (175300, 449720), (175150, 449800)],
+]
 
 
 def in_era(entry):

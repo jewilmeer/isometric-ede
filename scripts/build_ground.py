@@ -219,11 +219,11 @@ def era_style(coll, props, rings, style):
 def old_terrain():
     """config.OLD_TERRAIN in RD meters, without the railway and 8 m either side: its ballast and tracks, the yard
     included, come from the photo."""
-    from shapely.geometry import Polygon
+    from shapely.geometry import MultiPolygon, Polygon
 
     from era import rail_lines
 
-    return Polygon(OLD_TERRAIN).difference(rail_lines().buffer(8))
+    return MultiPolygon([Polygon(p) for p in OLD_TERRAIN]).difference(rail_lines().buffer(8))
 
 
 @cache
