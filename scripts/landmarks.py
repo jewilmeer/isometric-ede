@@ -12,6 +12,7 @@ Output: data/build/landmarks.json
 """
 
 import json
+from pathlib import Path
 
 import numpy as np
 
@@ -359,6 +360,12 @@ STYLED = [
 
 # The north wall of the Carré, which stood free between the demolition and the muurwoningen (AM, Op Enka: the photo
 # of 2010): a brick wall two storeys high with empty window openings, with the arch to the Krimperij in it.
+# The fence round the barracks terrains, all a civilian saw of them: steel posts, wire mesh and barbed wire on top
+# (scripts/fences.json, RD paths drawn by someone who walked along it, on the topographic map of 2008). From the old
+# station along the railway, up the edge of the Noorderbos, round the Maurits and Friso barracks, the terrain with the
+# sports track, the Elias Beeckman and Simon Stevin barracks, with the Sijsseltselaan fenced on both sides; open
+# where the gate to the barracks was (by the car park on the Kazernelaan). Defence left at the end of 2010.
+FENCES = [{"until": 2011, "path": p, "h": 2.4} for p in json.loads((Path(__file__).parent / "fences.json").read_text())]
 MILLS = [
     {"name": "De Keetmolen", "at": (174436.0, 449084.0), "hub": 12.6, "span": 24.0, "facing": 225},
     {"name": "Concordia", "at": (174115.0, 450992.0), "hub": 17.0, "span": 22.0, "facing": 225},
@@ -656,6 +663,7 @@ def main():
             out["buildings"][pid] = {"name": name, **{k: v for k, v in b.items() if k not in ("addrs", "near", "built_from", "name")}}
         print(f"{name}: restyled {len(pids)}")
     out["walls"] = list(filter(in_era, WALLS))
+    out["fences"] = list(filter(in_era, FENCES))
     out["mills"] = MILLS
     out["new_buildings"] = list(filter(in_era, NEW_BUILDINGS))
     out["chimneys"] = [{**{k: v for k, v in c.items() if k != "at"}, "x": c["at"][0], "y": c["at"][1]} for c in filter(in_era, CHIMNEYS)]

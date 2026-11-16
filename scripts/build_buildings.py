@@ -441,6 +441,21 @@ def add_wall_segment(verts, meta, w, a, b):
     emit(verts, items, bi, 0.0)
 
 
+def add_fences(verts, meta, fences):
+    """The fences of landmarks.json: a sheet `h` meters high along each segment of the path, that render/scene.js
+    cuts open into posts, mesh and barbed wire ("fence")."""
+    for i, f in enumerate(fences):
+        path = np.asarray(f["path"], dtype=np.float64)
+        bi = part(meta, f"fence-{i}", "fence", 0.0, f["h"], (96, 102, 98), (96, 102, 98), param=f["h"])
+        meta[bi]["photo"] = False
+        items = []
+        for a, b in zip(path, path[1:]):
+            d = b - a
+            if np.linalg.norm(d) > 0.1:
+                items += extrude([rect_ring(*(a + b) / 2, np.linalg.norm(d) + 0.04, 0.04, float(np.arctan2(d[1], d[0])))], 0.0, f["h"])
+        emit(verts, items, bi, 0.0)
+
+
 def add_dock(verts, meta, p):
     """A loading dock along a facade, from `from` to `to` (RD, with the building to the left): a raised concrete
     platform `depth` meters out at `deck` meters, and over it a steel canopy that reaches further out, at `roof` meters,
@@ -702,6 +717,7 @@ def main():
     add_railings(verts, meta, landmarks.get("play", []))
     add_props(verts, meta, landmarks.get("props", []))
     add_walls(verts, meta, landmarks.get("walls", []))
+    add_fences(verts, meta, landmarks.get("fences", []))
     add_new_buildings(verts, meta, footprints, landmarks.get("new_buildings", []))
     add_monuments(verts, meta, footprints, landmarks.get("monuments", []))
     texture_roofs(aerial, meta)

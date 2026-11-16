@@ -15,7 +15,7 @@ const ROAD_ALPHA = 0.5; // marks road pixels in the color target, see makeRoads 
 
 // The era's data (render/run.mjs --era): data/build for now, data/build-<era> for an earlier year.
 const DATA = new URLSearchParams(location.search).get('data') || '/data/build';
-const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 , dome: 23, mausoleum: 24, station1902: 25, ruin: 26, parking: 27, cinema: 28, mosque: 29, loods: 30 };
+const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 , dome: 23, mausoleum: 24, station1902: 25, ruin: 26, parking: 27, cinema: 28, mosque: 29, loods: 30, fence: 31 };
 
 const rgb = (r, g, b) => new THREE.Color(r / 255, g / 255, b / 255);
 const hash = (x) => {
@@ -231,6 +231,15 @@ vec3 buildingPattern(vec3 base) {
       float y = vUv2.y - (vAxis - 1.1);
       bool bar = y > 1.0 || y < 0.12 || mod(vUv2.x, 0.45) < 0.07;
       if (!bar) discard;
+    } else if (type == 31) {
+      // Fence round a military terrain: a post every 3 m, a top rail, diamond wire mesh, three strands of barbed wire.
+      float x = vUv2.x, y = vUv2.y;
+      // The mesh is finer than a pixel: every other pixel, which the smoothing turns into a see-through grey.
+      bool post = mod(x, 3.0) < 0.15;
+      bool rail = abs(y - 1.95) < 0.06;
+      bool barb = y > 1.95 && (abs(y - 2.12) < 0.04 || abs(y - 2.26) < 0.04 || y > vAxis - 0.06);
+      bool mesh = y < 1.95 && mod(floor(gl_FragCoord.x) + floor(gl_FragCoord.y), 2.0) < 0.5;
+      if (!(post || rail || barb || mesh)) discard;
     } else if (type == 17) {
       // The Enka canteen (1950s): a concrete grid of bays, each a tall window over a white panel, green frames.
       float col = mod(vUv2.x, 3.3), fl = mod(vUv2.y, 3.4);
