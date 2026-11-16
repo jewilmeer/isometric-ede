@@ -300,6 +300,15 @@ POINTS = [
     {"name": "Beeld: De Grote Vlucht", "at": (174858, 450919), "kind": "Beeld"},
     {"name": "Beeld: Spelende beren", "at": (174485, 451001), "kind": "Beeld"},
     {"name": "Kinderboerderij De Proosdij", "at": (173196, 450270), "kind": "Kinderboerderij"},
+    # The oldest inn of Ede, demolished in 1974 for the widening of the Molenstraat (Gemeentearchief Ede, Archieval;
+    # the place from its map marker, within 20-30 m).
+    {
+        "name": "Herberg De Roskam",
+        "at": (174480, 450964),
+        "kind": "Verdwenen · herberg, 17e eeuw-1974",
+        "text": "Hier aan de Grotestraat stond De Roskam, volgens het Gemeentearchief het oudste horecabedrijf van Ede. In de 17e eeuw was het de belangrijkste herberg van het dorp, met stallen en logeerkamers voor reizigers, die naar Den Haag nog 21 uur onderweg waren; de ambtsjonkers vergaderden er tot 1700, en in 1645 logeerden en aten er een half jaar lang dominees, voor 290 gulden. Dat Napoleon er sliep, wordt verteld maar is nooit bewezen. Onder waardin Marie Timmer werd er viool gespeeld en gedanst, tot ongenoegen van de kerkenraad. Op het laatst was het een gewoon café; in 1974 ging het, met de gewelfde kelder en al, tegen de grond voor de verbreding van de Molenstraat.",
+        "more": "https://www.archieval.nl/detail.php?nav_id=0-4&id=751256377",
+    },
     # Stories of the barracks terrains and of the Enka from the Atlas van Ede (atlasvanede.nl), in our own words.
     # The mess hall between the Friso and Maurits barracks, burnt down in the 1970s. Place: Atlas marker, on the open
     # parade ground in front of the boiler house (medium-high).
@@ -398,6 +407,36 @@ POINTS = [
     },
 ]
 
+# Photos of today from the Atlas van Ede, by its maker, who allows them with this credit (atlasvanede.nl/maker). The
+# historical photos there are from the Gemeentearchief and the Historisch Museum Ede, and not his to give.
+ATLAS_PHOTOS = {
+    "Spinnerijschoorsteen": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/emka_schoorsteen_20210418_151534.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2021", "https://www.atlasvanede.nl/mooi-ede/gebouwen/eye-catchers-1/gebouwen-enka"),
+    "Bitterzoutloods": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/enka_zoutloods_20210420_143007_850-standard.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2021", "https://www.atlasvanede.nl/mooi-ede/must-see/1-10-in-ede/03-enka-fabriekscomplex/mooie-elementen"),
+    "Hoek van het Carré": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/enka_20210418_150521800.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2021", "https://www.atlasvanede.nl/mooi-ede/gebouwen/eye-catchers-1/gebouwen-enka"),
+    "Stingerbol": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/stingerbol_20221103_172301_800_800.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2022", "https://www.atlasvanede.nl/mooi-ede/must-see/21-30-in-ede/24-de-stingerbol"),
+    "Johan Willem Friso kazerne": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/friso_nu_20190324_132402800.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2019", "https://www.atlasvanede.nl/mooi-ede/must-see/21-30-in-ede/23-maurits-en-frisokazerne"),
+    "Mauritskazerne": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/maurits_nu800-1.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2021", "https://www.atlasvanede.nl/mooi-ede/must-see/21-30-in-ede/23-maurits-en-frisokazerne"),
+    "Van Essenkazerne": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/vanessen_20200722_132909800.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2020", "https://www.atlasvanede.nl/mooi-ede/gebouwen/verlaten-gebouwen/2021-van-essenkazerne"),
+    "Elias Beeckman kazerne": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/eliasbeeckman_20200728_145530800-2.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2020", "https://www.atlasvanede.nl/mooi-ede/must-see/11-20-in-ede/13-simon-stevin-en-elias-beeckman/13a-elias-beeckman-kazerneterrein"),
+    "Simon Stevinkazerne": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/simonstevin_20210716_151147800.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2021", "https://www.atlasvanede.nl/mooi-ede/must-see/11-20-in-ede/13-simon-stevin-en-elias-beeckman/13b-simon-stevin-kazerneterrein"),
+    "Stookgebouw": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/mauritskazerne_stookgebouw_20210702_103804_800_800.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2021", "https://www.atlasvanede.nl/ede-toen/historische-plekken/verdwenen-plekken/binnen-ede/mess-en-eetzaal-mauritskazerne"),
+    "Platform Militaire Historie": ("https://primary.jwwb.nl/public/x/f/b/temp-pcqwajonzplyxjqqoxju/platform_militaire_historie_20210911_144750_800_800-1.jpg",
+        "© Allard Bijlsma | Atlas van Ede, 2021", "https://www.atlasvanede.nl/mooi-ede/must-see/31-40-in-ede/40-platform-militaire-historie"),
+}
+for entry in BUILDINGS + POINTS:
+    if entry["name"] in ATLAS_PHOTOS:
+        entry["photo"] = ATLAS_PHOTOS[entry["name"]]
+
 # Series in the viewer's panel: a walk past these places, starting with the one nearest the Enka chimney.
 CATEGORIES = [
     ("enka", "Enka-terrein", [
@@ -409,7 +448,7 @@ CATEGORIES = [
         "Elias Beeckman kazerne", "Simon Stevinkazerne", "Mess en eetzaal", "Stookgebouw", "Het Arsenaal",
         "LuAS-luchtafweerschool", "De Achtbaan", "Gebouw 23", "Platform Militaire Historie",
     ]),
-    ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum", "De Keetmolen", "Het Pomphuis"]),
+    ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum", "De Keetmolen", "Het Pomphuis", "Herberg De Roskam"]),
     ("scholen", "Scholen", ["Koningin Beatrixschool", "Uniek", "De Franciscus"]),
     ("bedrijven", "Bedrijven en winkels", ["Riedel", "AH XL", "Stadspoort", "Pathé Ede"]),
     ("zorggeloof", "Zorg en geloof", ["Ziekenhuis Gelderse Vallei", "Ulu Moskee"]),

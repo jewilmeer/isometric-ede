@@ -86,14 +86,17 @@ def walk(idx, spots, start=(175084, 448248)):
     return path
 
 
-def photo(name, credit):
-    """A Wikimedia Commons photo, downloaded once into data/build/photos/ (site.sh publishes that folder)."""
+def photo(name, credit, page=None):
+    """A photo downloaded once into data/build/photos/ (site.sh publishes that folder): a Wikimedia Commons file name, or
+    the URL of an image elsewhere with the page it is shown on (the Atlas van Ede allows its photos with their source)."""
+    url = name if name.startswith("http") else commons_thumb(name)
     dst = PHOTOS / f"{hashlib.md5(name.encode()).hexdigest()[:12]}.jpg"
     if not dst.exists():
         PHOTOS.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(download(commons_thumb(name)))
+        dst.write_bytes(download(url))
         subprocess.run(["magick", str(dst), "-resize", "640x640>", "-quality", "82", str(dst)], check=True)
-    return {"src": f"photos/{dst.name}", "credit": credit, "url": f"https://commons.wikimedia.org/wiki/File:{urllib.parse.quote(name)}"}
+    return {"src": f"photos/{dst.name}", "credit": credit,
+            "url": page or f"https://commons.wikimedia.org/wiki/File:{urllib.parse.quote(name)}"}
 
 
 if __name__ == "__main__":
