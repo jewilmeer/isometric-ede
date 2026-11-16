@@ -90,7 +90,7 @@ BUILDINGS = [
         "name": "Poortgebouw",
         "at": (174985, 448604),
         "kind": "Rijksmonument · 1922",
-        "text": "Het hoofdgebouw van de fabriek, met de grote boog waar je het terrein op ging en bovenin de letters ENKA. Toen de bouw van de wijk begon, had de Grondbank er haar kantoor, en regelde de hoofduitvoerder van daaruit ook de evenementen in de leegstaande Westhal. Bouwbedrijf Kreeft restaureerde het voor BOEi.",
+        "text": "Het hoofdgebouw van de fabriek, met de grote boog waar je het terrein op ging en bovenin de letters ENKA. Toen de bouw van de wijk begon, had de Grondbank er haar kantoor, en regelde de hoofduitvoerder van daaruit ook de evenementen in de leegstaande Westhal. Bouwbedrijf Kreeft restaureerde het voor BOEi. Tot de jaren tachtig ging je de fabriek in via de Dr. Hartogsweg langs de noordkant van het terrein; sinds de Klinkenbergerweg en de Albertstunnel zijn aangelegd, rijd je de wijk in via de Enkalaan en de Akulaan.",
         "more": "https://www.am.nl/wp-content/uploads/2024/03/OP-Enka-waar-elke-steen-een-verhaal-vertelt.pdf",
     },
     # The new Ketelhuis next to the boiler chimney, after the boiler house that stood there.
@@ -300,19 +300,116 @@ POINTS = [
     {"name": "Beeld: De Grote Vlucht", "at": (174858, 450919), "kind": "Beeld"},
     {"name": "Beeld: Spelende beren", "at": (174485, 451001), "kind": "Beeld"},
     {"name": "Kinderboerderij De Proosdij", "at": (173196, 450270), "kind": "Kinderboerderij"},
+    # Stories of the barracks terrains and of the Enka from the Atlas van Ede (atlasvanede.nl), in our own words.
+    # The mess hall between the Friso and Maurits barracks, burnt down in the 1970s. Place: Atlas marker, on the open
+    # parade ground in front of the boiler house (medium-high).
+    {
+        "name": "Mess en eetzaal",
+        "at": (174748, 449052),
+        "kind": "Verdwenen · eetzaal, jaren '30",
+        "text": "Tussen de Friso- en de Mauritskazerne stond tot de jaren '70 de mess en eetzaal, waar de militairen aten; in de volksmond de Cantine. Het gebouw uit de jaren '30 had een neorenaissancegevel met in het middendeel een klok, maar kreeg later een strakke, zakelijke stijl en was onherkenbaar veranderd toen het in de jaren '70 door brand werd verwoest. Daarna lag hier tot ongeveer 2000 het exercitieterrein van Defensie; nu is het een parkeerterrein van het World Food Center.",
+        "more": "https://www.atlasvanede.nl/ede-toen/historische-plekken/verdwenen-plekken/binnen-ede/mess-en-eetzaal-mauritskazerne",
+    },
+    # The stoker's building behind the mess hall. Place: Atlas marker (52.02950, 5.67561), a small building on the 1987 map.
+    {
+        "name": "Stookgebouw",
+        "at": (174794, 449059),
+        "kind": "Stookgebouw · restaurant in wording",
+        "text": "Het stookgebouw van Defensie stond achter de mess en verwarmde de kazernes: een soort voorloper van het warmtenet van nu. Eind 2025 begon de ombouw tot restaurant, met een glazen aanbouw en een terras.",
+        "more": "https://www.atlasvanede.nl/ede-nu/stadsontwikkeling/heden/wfc/stookgebouw-wfc",
+    },
+    # The depot behind the Friso barracks, on the 1987 map still a black building there, gone on the 2008 map.
+    # Place: the building's footprint on the 1987 map, 5-10 m from the Atlas marker (medium-high). The Atlas file name
+    # says "gesloopt in 1968", but the text, the photo caption ("vlak voor de afbraak in 1989") and the topo map
+    # of 1987 all say 1989.
+    {
+        "name": "Het Arsenaal",
+        "at": (174797, 448892),
+        "until": 1989,
+        "kind": "Verdwenen · pakhuis, eind jaren '20",
+        "text": "Direct achter de Frisokazerne stond tot 1989 een pakhuis dat Het Arsenaal heette, eind jaren '20 gebouwd en met de kazerne verbonden. Er lagen wapens, kleding en kazerneringsmateriaal, en ook medische middelen. Na de bevrijding van Ede op 17 april 1945 werden hier Duitse krijgsgevangenen opgesloten. Vlak voor de sloop was het gebouw zwart van een brand; nu is het terrein in afwachting van houten kantoren.",
+        "more": "https://www.atlasvanede.nl/ede-toen/historische-plekken/verdwenen-plekken/binnen-ede/het-arsenaal",
+    },
+    # The anti-aircraft school building in the triangle of the old approach from the Stationsweg. Place: the building on
+    # both topo maps, 12 m west of the Atlas marker (high).
+    {
+        "name": "LuAS-luchtafweerschool",
+        "at": (174686, 449046),
+        "until": 2014,
+        "kind": "Verdwenen · schoolgebouw, jaren '50",
+        "text": "In de tweede helft van 1950 kwam de Luchtafweerschool op de Maurits- en Frisokazerne; in de jaren '50 was het met 2500 instructeurs en leerlingen het grootste vredesonderdeel van de landmacht. Voor de school kwam een gebouw in de driehoek bij de oude ingang aan de Stationsweg, met beneden de kantine voor officieren en onderofficieren en boven een fotohobbyclub. Die ingang ging dicht toen vanaf 1980 de Klinkenbergerweg pal langs het gebouw kwam; rond 2014 is het gesloopt, en nu ligt er het Frisopark.",
+        "more": "https://www.atlasvanede.nl/ede-toen/historische-plekken/verdwenen-plekken/binnen-ede/luas-luchtafweerschool",
+    },
+    # The driving circuit between the Sijsselt and the Stingerbol. On the 1987 map only the southern loop of the road
+    # pattern is left, a long oval on the green; by 2008 the area is built over. Place: middle of that oval, 100 m south
+    # of the Atlas marker (medium-low: the Atlas marker is at the northern end and the eight itself is hard to see).
+    {
+        "name": "De Achtbaan",
+        "at": (175135, 448920),
+        "kind": "Verdwenen · rijbaan, jaren '50",
+        "text": "Een rijbaan in de vorm van een acht, aangelegd in de jaren '50 voor de chauffeursopleiding van Defensie. Hier leerden aankomende chauffeurs colonne rijden, scherpe bochten maken met aanhangers en berging, op een afgesloten terrein achter de kazernes. Vanaf de jaren '90 verdween de baan gedeeltelijk onder bedrijfsgebouwen; er bleef bovengronds bijna niets van over. Nu is het ontwikkelingsgebied van het World Food Center, met woningbouw als De Proefmeesters, maar de naam leeft voort onder Edenaren en oud-militairen.",
+        "more": "https://www.atlasvanede.nl/ede-toen/historische-plekken/verdwenen-plekken/binnen-ede/de-achtbaan",
+    },
+    # The boiler house in the Arthur Koolkwartier (Verbindelaarshof 53). The BGT building there is the same footprint as
+    # Former stables and vehicle shed, now houses (the BGT building at the Atlas marker). Place: marker, inside the
+    # building (high).
+    {
+        "name": "Gebouw 23",
+        "at": (174757, 449684),
+        "kind": "Voormalige paardenstal en voertuigloods",
+        "text": "Gebouw 23 hoorde bij de stallen waar paarden stonden om het artilleriegeschut te trekken, en werd later een garage voor militaire voertuigen; in 2010 was het de voertuigenloods van de 121 Rayon Verbindings Compagnie. Nu wordt het in het Arthur Koolkwartier verbouwd tot vijf woningen en vier appartementen, waarbij de militaire architectuur het uitgangspunt blijft. Het staat aan de Verbindelaarsweg, bij de andere loodsen die al tot woningen, bedrijven en een museum zijn geworden.",
+        "more": "https://www.atlasvanede.nl/ede-nu/stadsontwikkeling/heden/kazerneterreinen-1/gebouw-23",
+    },
+    # The museum in the former smithy of the Arthur Kool barracks. Place: the small BGT building at the Atlas marker (high).
+    {
+        "name": "Platform Militaire Historie",
+        "at": (174656, 449661),
+        "kind": "Museum · voormalige smederij",
+        "text": "Het oorlogs- en garnizoensmuseum van Ede zit in de voormalige smederij van de Arthur Koolkazerne. Vrijwilligers vertellen er over alle kanten van het militaire leven in Ede, van 1906 tot 2006, en verzorgen regelmatig rondleidingen door het kazernegebied. Het ligt in het Arthur Koolkwartier, tussen opgeknapte loodsen en andere gerenoveerde kazernegebouwen.",
+        "more": "https://www.atlasvanede.nl/mooi-ede/must-see/31-40-in-ede/40-platform-militaire-historie",
+    },
+    # The open-air pool of the factory, beside the Klinkenbergerweg and the tracks; three basins on the 1987 topo map
+    # (centre of those), gone on the 2008 map. Closed 31 August 1996, so only in the 1987 era.
+    {
+        "name": "Enka-bad",
+        "at": (174690, 448700),
+        "until": 1997,
+        "kind": "Openluchtzwembad · 1931-1996",
+        "text": "Het openluchtbad dat de Enka in 1931 aanlegde voor haar personeel en de Edenaren, vlak bij het station en het fabrieksterrein. Het water werd verwarmd met restwarmte uit de fabriek, dus je kon er al rond Koninginnedag zwemmen, ruim voor andere buitenbaden open gingen. In de jaren zeventig werd het terrein bijna drie keer zo groot, met een extra bassin en grote zonneweiden. Op 31 augustus 1996 ging het bad definitief dicht; het terrein raakte in verval en verdween bij de herinrichting van het stationsgebied.",
+        "more": "https://www.atlasvanede.nl/ede-toen/hoe-zat-dat/ede-zuid-4/enka-zwembad",
+    },
+    # The first-aid building (Heimans, 1948), now lunchroom De Proefzaak. BAG building of 1948, 34 x 41 m, next to the
+    # Westhal's green courtyard. The fountain and bench stood outside the gate and were moved here in 2021.
+    {
+        "name": "EHBO-gebouw",
+        "at": (174923, 448549),
+        "kind": "Verbandplaats · 1948",
+        "text": "Het gebouw uit 1948 dat de fabriek liet maken naar de ideeën van bedrijfsarts dr. Th. Heimans, als EHBO-post voor het personeel. Het bleef staan toen het meeste van het terrein werd gesloopt, werd helemaal gerenoveerd en is sinds 2023 lunchroom De Proefzaak. Op het plein ervoor staan sinds 2021 de oude Enka-fontein en de herinneringsbank, die vroeger net buiten de poort stonden. Via het gebouw kom je in de schuilkelder van de fabriek uit 1940, in 1948 ingericht tegen een atoomaanval, met luchtfilter, eigen stroom en operatiekamers; nu zit er een escaperoom.",
+        "more": "https://www.atlasvanede.nl/mooi-ede/gebouwen/eye-catchers-1/gebouwen-enka",
+    },
+    # Het Pomphuis, 'Klinkenbergerweg 41' (PDOK: RD 174534, 450219; BAG building from 1890 at 174530, 450216). The water
+    # tower stood on the Lindelaan next to it, blown up in 1978, so the tower's story hangs on this point in every era.
+    {
+        "name": "Het Pomphuis",
+        "at": (174534, 450219),
+        "kind": "Pompstation · 1913",
+        "text": "Het pomphuis van de Edesche waterleiding, naast de watertoren die in 1906 aan de Lindelaan werd gebouwd. De toren, met een reservoir bovenin, diende ook als uitkijkpost en kreeg in de oorlog een granaat te verwerken; op 27 april 1978 om 14.00 uur werd hij met dynamiet opgeblazen. Het pomphuis (1913, later uitgebreid met een groter pompgebouw) bleef staan: de brandweer zat er jaren, nu is het restaurant Het Pomphuis.",
+        "more": "https://www.atlasvanede.nl/ede-toen/historische-plekken/verdwenen-plekken/binnen-ede/watertoren",
+    },
 ]
 
 # Series in the viewer's panel: a walk past these places, starting with the one nearest the Enka chimney.
 CATEGORIES = [
     ("enka", "Enka-terrein", [
         "Spinnerijschoorsteen", "Ketelschoorsteen", "Het Ketelhuis (Stoer)", "Kantinegebouw", "Gymlokaal Enka", "Poortgebouw",
-        "Westhal", "Hoek van het Carré", "Bitterzoutloods", "De padden van het Enka-terrein", "Langzaamverkeerbrug", "De Reehorst",
+        "Westhal", "Hoek van het Carré", "Bitterzoutloods", "De padden van het Enka-terrein", "Langzaamverkeerbrug", "De Reehorst", "Enka-bad", "EHBO-gebouw",
     ]),
     ("kazernes", "Kazernes", [
         "Stingerbol", "Johan Willem Friso kazerne", "Mauritskazerne", "Kantine van de kazerne", "Arthur Kool kazerne", "P.L. Bergansiuskazerne", "Van Essenkazerne",
-        "Elias Beeckman kazerne", "Simon Stevinkazerne",
+        "Elias Beeckman kazerne", "Simon Stevinkazerne", "Mess en eetzaal", "Stookgebouw", "Het Arsenaal",
+        "LuAS-luchtafweerschool", "De Achtbaan", "Gebouw 23", "Platform Militaire Historie",
     ]),
-    ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum", "De Keetmolen"]),
+    ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum", "De Keetmolen", "Het Pomphuis"]),
     ("scholen", "Scholen", ["Koningin Beatrixschool", "Uniek", "De Franciscus"]),
     ("bedrijven", "Bedrijven en winkels", ["Riedel", "AH XL", "Stadspoort", "Pathé Ede"]),
     ("zorggeloof", "Zorg en geloof", ["Ziekenhuis Gelderse Vallei", "Ulu Moskee"]),
