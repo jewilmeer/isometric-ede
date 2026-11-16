@@ -41,6 +41,10 @@ OLD_TERRAIN = [
     [(175150, 450060), (175570, 450080), (175900, 450130), (175915, 450370), (176270, 450370), (176270, 449840), (176000, 449790),
      (175980, 449740), (175300, 449720), (175150, 449800)],
 ]
+# Today's streets that are new along their whole length (OpenStreetMap names): 25 m either side of them counts as old
+# terrain too. The Generaal Hackettlaan, the "Parklaan" across the barracks terrains, opened 2020-2022 on the line of the
+# narrow Kazernelaan and Nieuwe Kazernelaan.
+NEW_STREETS = ["Generaal Hackettlaan"]
 
 
 def in_era(entry):

@@ -21,7 +21,7 @@ from scipy import ndimage as ndi
 
 from aerial import load_aerial
 from era import bare, built_after, changed
-from config import ERA, ERA_CONF, OLD_TERRAIN, BUILD, CHUNK, CX, CY, GROUND_RES, NX as CHUNKS_X, NY as CHUNKS_Y, RAW, XMAX, XMIN, YMAX, YMIN
+from config import ERA, ERA_CONF, NEW_STREETS, OLD_TERRAIN, BUILD, CHUNK, CX, CY, GROUND_RES, NX as CHUNKS_X, NY as CHUNKS_Y, RAW, XMAX, XMIN, YMAX, YMIN
 from sun import SUN_AZIMUTH, SUN_ELEVATION
 
 NX, NY = int((XMAX - XMIN) / GROUND_RES), int((YMAX - YMIN) / GROUND_RES)
@@ -217,13 +217,18 @@ def era_style(coll, props, rings, style):
 
 @cache
 def old_terrain():
-    """config.OLD_TERRAIN in RD meters, without the railway and 8 m either side: its ballast and tracks, the yard
-    included, come from the photo."""
-    from shapely.geometry import MultiPolygon, Polygon
+    """config.OLD_TERRAIN and the strips along config.NEW_STREETS in RD meters, without the railway and 8 m either side:
+    its ballast and tracks, the yard included, come from the photo."""
+    from shapely.geometry import LineString, Polygon
+    from shapely.ops import unary_union
 
     from era import rail_lines
+    from geo import wgs_to_rd
 
-    return MultiPolygon([Polygon(p) for p in OLD_TERRAIN]).difference(rail_lines().buffer(8))
+    streets = [LineString([wgs_to_rd(g["lat"], g["lon"]) for g in w["geometry"]]).buffer(25)
+               for w in json.loads((RAW / "osm_roads.json").read_text())["elements"]
+               if w["type"] == "way" and w.get("geometry") and w["tags"].get("name") in NEW_STREETS]
+    return unary_union([Polygon(p) for p in OLD_TERRAIN] + streets).difference(rail_lines().buffer(8))
 
 
 @cache
