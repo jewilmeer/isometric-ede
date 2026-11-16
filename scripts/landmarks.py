@@ -300,14 +300,15 @@ POINTS = [
     {"name": "Beeld: De Grote Vlucht", "at": (174858, 450919), "kind": "Beeld"},
     {"name": "Beeld: Spelende beren", "at": (174485, 451001), "kind": "Beeld"},
     {"name": "Kinderboerderij De Proosdij", "at": (173196, 450270), "kind": "Kinderboerderij"},
-    # The oldest inn of Ede, demolished in 1974 for the widening of the Molenstraat (Gemeentearchief Ede, Archieval;
-    # the place from its map marker, within 20-30 m).
+    # The oldest café of Ede that still pours: on the corner where the old road to Otterlo bent, there by the 1890s
+    # (Ede bij gaslicht, Lammert van de Bospoort, 2012; Archieval on De Bospoort and De Korenbloem). Place: its
+    # address, Bospoort 1.
     {
-        "name": "Herberg De Roskam",
-        "at": (174480, 450964),
-        "kind": "Verdwenen · herberg, 17e eeuw-1974",
-        "text": "Hier aan de Grotestraat stond De Roskam, volgens het Gemeentearchief het oudste horecabedrijf van Ede. In de 17e eeuw was het de belangrijkste herberg van het dorp, met stallen en logeerkamers voor reizigers, die naar Den Haag nog 21 uur onderweg waren; de ambtsjonkers vergaderden er tot 1700, en in 1645 logeerden en aten er een half jaar lang dominees, voor 290 gulden. Dat Napoleon er sliep, wordt verteld maar is nooit bewezen. Onder waardin Marie Timmer werd er viool gespeeld en gedanst, tot ongenoegen van de kerkenraad. Op het laatst was het een gewoon café; in 1974 ging het, met de gewelfde kelder en al, tegen de grond voor de verbreding van de Molenstraat.",
-        "more": "https://www.archieval.nl/detail.php?nav_id=0-4&id=751256377",
+        "name": "Café De Bospoort",
+        "at": (174425, 451261),
+        "kind": "Café · al in de 19e eeuw",
+        "text": "Het oudste café van Ede dat nog open is. Het dankt zijn naam aan de Boschpoort, de oudste wijk van het dorp, en staat in de bocht waar de oude Otterloseweg naar links boog. Rond 1900 was het een trefpunt voor de Boschpoorters en voor boeren uit Wekerom en Otterlo die naar de markt kwamen; het wisselde vaak van eigenaar, maar bleef populair. Toen de nachtwacht nog met zijn klep door het dorp liep, moest hij hier, net als bij De Roskam, De Posthoorn en De Korenbloem om de hoek, na sluitingstijd vechtende jongelui uit elkaar halen. Die andere drie zijn verdwenen: De Korenbloem brandde in 1943 uit, De Posthoorn in 1941, en De Roskam werd in 1974 gesloopt.",
+        "more": "https://www.archieval.nl/detail.php?nav_id=0-3&id=750096353",
     },
     # Stories of the barracks terrains and of the Enka from the Atlas van Ede (atlasvanede.nl), in our own words.
     # The mess hall between the Friso and Maurits barracks, burnt down in the 1970s. Place: Atlas marker, on the open
@@ -448,7 +449,7 @@ CATEGORIES = [
         "Elias Beeckman kazerne", "Simon Stevinkazerne", "Mess en eetzaal", "Stookgebouw", "Het Arsenaal",
         "LuAS-luchtafweerschool", "De Achtbaan", "Gebouw 23", "Platform Militaire Historie",
     ]),
-    ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum", "De Keetmolen", "Het Pomphuis", "Herberg De Roskam"]),
+    ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum", "De Keetmolen", "Het Pomphuis", "Café De Bospoort"]),
     ("scholen", "Scholen", ["Koningin Beatrixschool", "Uniek", "De Franciscus"]),
     ("bedrijven", "Bedrijven en winkels", ["Riedel", "AH XL", "Stadspoort", "Pathé Ede"]),
     ("zorggeloof", "Zorg en geloof", ["Ziekenhuis Gelderse Vallei", "Ulu Moskee"]),
