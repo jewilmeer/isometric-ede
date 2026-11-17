@@ -320,6 +320,16 @@ POINTS = [
         "text": "De Sub, voor vaste gasten: een bruin café naast station Ede Centrum, met zo'n honderd speciaalbieren. Mede-eigenaar Tonny van Brummelen begon er als parttimer en is sinds 1998 mede-eigenaar; hij noemt het een afspreekcafé. Volgens Ede Centrum trekt het al decennia een gemengd publiek.",
         "more": "https://www.edecentrum.nl/horeca/biercafe-substitute/",
     },
+    # The tapperie on the Parkweg, in a building of 1904; the business registered from 1976 to 2022, when it changed
+    # hands (Oozo, KvK 09077238). The four cafés of the Park from Stichting Erfgoed Ede (De Eerste en Tweede
+    # Parkdwarsstraat). Place: its address, Parkweg 33.
+    {
+        "name": "Tapperie The Jug",
+        "at": (174369, 448851),
+        "kind": "Café · sinds 1976, pand uit 1904",
+        "text": "Een tapperie aan de Parkweg, in een pand uit 1904; als The Jug sinds 1976, en in 2022 kreeg het een nieuwe eigenaar. De Parkweg was altijd een cafébuurt: rond de Eerste Wereldoorlog had 't Park vier cafés, Nieuw Ede, Z.H.S., Dorland en Borst, waar de ouderen hun vertier zochten, terwijl de jongelui bij het station hingen. Bij café Borst hield de Parkweg op, en bij veel regen lag daar een grote modderpoel.",
+        "more": "https://stichtingerfgoedede.nl/verhalen.php?titel=De+Eerste+en+Tweede+Parkdwarsstraat",
+    },
     # Stories of the barracks terrains and of the Enka from the Atlas van Ede (atlasvanede.nl), in our own words.
     # The mess hall between the Friso and Maurits barracks, burnt down in the 1970s. Place: Atlas marker, on the open
     # parade ground in front of the boiler house (medium-high).
@@ -461,7 +471,7 @@ CATEGORIES = [
     ]),
     ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum", "De Keetmolen", "Het Pomphuis", "Café De Bospoort"]),
     ("scholen", "Scholen", ["Koningin Beatrixschool", "Uniek", "De Franciscus"]),
-    ("bedrijven", "Bedrijven en winkels", ["Riedel", "AH XL", "Stadspoort", "Pathé Ede", "Biercafé Substitute"]),
+    ("bedrijven", "Bedrijven en winkels", ["Riedel", "AH XL", "Stadspoort", "Pathé Ede", "Biercafé Substitute", "Tapperie The Jug"]),
     ("zorggeloof", "Zorg en geloof", ["Ziekenhuis Gelderse Vallei", "Ulu Moskee"]),
     ("oorlog", "Oorlog en herdenking", [
         "Monument voor de bombardementsslachtoffers", "Oorlogsmonument", "Mausoleum verzetstrijders",
