@@ -310,6 +310,16 @@ POINTS = [
         "text": "Het oudste café van Ede dat nog open is. Het dankt zijn naam aan de Boschpoort, de oudste wijk van het dorp, en staat in de bocht waar de oude Otterloseweg naar links boog. Rond 1900 was het een trefpunt voor de Boschpoorters en voor boeren uit Wekerom en Otterlo die naar de markt kwamen; het wisselde vaak van eigenaar, maar bleef populair. Toen de nachtwacht nog met zijn klep door het dorp liep, moest hij hier, net als bij De Roskam, De Posthoorn en De Korenbloem om de hoek, na sluitingstijd vechtende jongelui uit elkaar halen. Die andere drie zijn verdwenen: De Korenbloem brandde in 1943 uit, De Posthoorn in 1941, en De Roskam werd in 1974 gesloopt.",
         "more": "https://www.archieval.nl/detail.php?nav_id=0-3&id=750096353",
     },
+    # The beer café by Ede Centrum station, there by 1998 at the latest (Ede Centrum, interview with its co-owner).
+    # Place: its address, Nieuwe Stationsstraat 27.
+    {
+        "name": "Biercafé Substitute",
+        "at": (174324, 450551),
+        "since": 1998,
+        "kind": "Café · bruin biercafé",
+        "text": "De Sub, voor vaste gasten: een bruin café naast station Ede Centrum, met zo'n honderd speciaalbieren. Mede-eigenaar Tonny van Brummelen begon er als parttimer en is sinds 1998 mede-eigenaar; hij noemt het een afspreekcafé, waar je met iemand afspreekt en blijft hangen. Volgens Ede Centrum trekt het al decennia een gemengd publiek.",
+        "more": "https://www.edecentrum.nl/horeca/biercafe-substitute/",
+    },
     # Stories of the barracks terrains and of the Enka from the Atlas van Ede (atlasvanede.nl), in our own words.
     # The mess hall between the Friso and Maurits barracks, burnt down in the 1970s. Place: Atlas marker, on the open
     # parade ground in front of the boiler house (medium-high).
@@ -451,7 +461,7 @@ CATEGORIES = [
     ]),
     ("historisch", "Historische plekken", ["Station Ede Centrum", "Oude Kerk", "Sint Antonius van Padua", "Historisch Museum Ede", "Kasteel Hoekelum", "De Keetmolen", "Het Pomphuis", "Café De Bospoort"]),
     ("scholen", "Scholen", ["Koningin Beatrixschool", "Uniek", "De Franciscus"]),
-    ("bedrijven", "Bedrijven en winkels", ["Riedel", "AH XL", "Stadspoort", "Pathé Ede"]),
+    ("bedrijven", "Bedrijven en winkels", ["Riedel", "AH XL", "Stadspoort", "Pathé Ede", "Biercafé Substitute"]),
     ("zorggeloof", "Zorg en geloof", ["Ziekenhuis Gelderse Vallei", "Ulu Moskee"]),
     ("oorlog", "Oorlog en herdenking", [
         "Monument voor de bombardementsslachtoffers", "Oorlogsmonument", "Mausoleum verzetstrijders",
