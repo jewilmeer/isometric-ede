@@ -317,7 +317,7 @@ POINTS = [
         "at": (174324, 450551),
         "since": 1998,
         "kind": "Café · bruin biercafé",
-        "text": "De Sub, voor vaste gasten: een bruin café naast station Ede Centrum, met zo'n honderd speciaalbieren. Mede-eigenaar Tonny van Brummelen begon er als parttimer en is sinds 1998 mede-eigenaar; hij noemt het een afspreekcafé, waar je met iemand afspreekt en blijft hangen. Volgens Ede Centrum trekt het al decennia een gemengd publiek.",
+        "text": "De Sub, voor vaste gasten: een bruin café naast station Ede Centrum, met zo'n honderd speciaalbieren. Mede-eigenaar Tonny van Brummelen begon er als parttimer en is sinds 1998 mede-eigenaar; hij noemt het een afspreekcafé. Volgens Ede Centrum trekt het al decennia een gemengd publiek.",
         "more": "https://www.edecentrum.nl/horeca/biercafe-substitute/",
     },
     # Stories of the barracks terrains and of the Enka from the Atlas van Ede (atlasvanede.nl), in our own words.
