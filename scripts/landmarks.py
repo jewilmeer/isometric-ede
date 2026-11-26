@@ -603,17 +603,18 @@ PROPS = [
 # Railway sidings that are gone now (scripts/build_ground.py paints them, scripts/build_trees.py keeps them clear). The
 # Enka's own tracks, traced on the topographic maps of 1987 and 2008: off the main line west of the factory, south
 # along the west side and east past the loading dock of the Bitterzoutloods (4.3 m out from its facade), to the
-# south-west corner of the big hall.
+# south-west corner of the big hall. Lifted when the terrain was cleaned up: on the aerial photo of 2009 only a sand
+# track is left of them.
 SIDINGS = [
-    {"name": "Aansluitspoor Enka", "until": 2015, "path": [
+    {"name": "Aansluitspoor Enka", "until": 2009, "path": [
         (174682.8, 448794.2), (174711.9, 448688.3), (174726.2, 448619.5), (174728.3, 448550.8), (174726.2, 448487.2),
         (174738.4, 448450.2), (174767.5, 448421.1), (174801.9, 448402.9), (174877.1, 448378.2), (175010.9, 448328.5)]},
     # Its branches: a second track in a wide bend to the west, back onto it before the loading dock, and one off to
     # the south-east, to the western halls.
-    {"name": "Aansluitspoor Enka, westboog", "until": 2015, "path": [
+    {"name": "Aansluitspoor Enka, westboog", "until": 2009, "path": [
         (174725.7, 448620.5), (174716.2, 448598.2), (174700.3, 448569.7), (174684.5, 448534.7), (174679.7, 448503.0),
         (174686.1, 448474.4), (174703.5, 448449.0), (174735.3, 448428.4), (174767.0, 448421.1)]},
-    {"name": "Aansluitspoor Enka, naar de westhallen", "until": 2015, "path": [
+    {"name": "Aansluitspoor Enka, naar de westhallen", "until": 2009, "path": [
         (174683.8, 448790.3), (174694.0, 448757.0), (174706.7, 448715.7), (174725.7, 448674.4), (174741.6, 448642.7),
         (174763.8, 448614.1), (174789.2, 448579.2)]},
 ]

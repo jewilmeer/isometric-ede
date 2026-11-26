@@ -27,10 +27,13 @@ NOW = ROOT / "data" / "build"
 #              found, such as the old station
 #   osm_area   an RD box where those count too although nothing of today's 3D BAG marks it as changed (the station)
 #   paving     meters of paving round those buildings in the changed area (default 6; 15 where AHN2 is blind)
+#   photo      the year of an aerial photo (data/raw/aerial-<year>, scripts/fetch.py OLD_AERIAL) that gives the ground its
+#              colour in place of today's: right in the changed area too, where it takes the topographic map's place
+#   texture    the year of a black and white photo that gives the ground only its detail (light and dark), not its colour
 ERAS = {
-    "2009": {"label": "2009", "ahn2": True, "built": 2009, "bare": (174750, 448100, 175500, 448700), "topo_blind": 2008, "osm": "2012",
+    "2009": {"label": "2009", "ahn2": True, "built": 2009, "bare": (174750, 448100, 175500, 448700), "topo_blind": 2008, "osm": "2012", "photo": 2009,
              "osm_area": (174300, 448750, 174950, 449000)},
-    "1987": {"label": "1987", "ahn2": True, "built": 1987, "bare": None, "topo": 1987, "paving": 15, "osm": "2012"},
+    "1987": {"label": "1987", "ahn2": True, "built": 1987, "bare": None, "topo": 1987, "paving": 15, "osm": "2012", "texture": 2006},
 }
 ERA_CONF = ERAS.get(ERA, {})
 # Terrains whose street plan has changed completely since (RD): in an earlier era their ground comes from that year's

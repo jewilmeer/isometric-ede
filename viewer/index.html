@@ -534,9 +534,9 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       let past = '';
       if (ERA_KEY === '2009') {
         past = L('2009: AHN2 (2007-2012, publiek domein, via GeoTiles), OpenStreetMap zoals in 2012, Topografische kaart 2008 (Kadaster/', '2009: AHN2 (2007-2012, public domain, via GeoTiles), OpenStreetMap as in 2012, Topographic map 2008 (Kadaster/')
-          + TOPO + ', ' + a('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0') + ')';
+          + TOPO + ', ' + a('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0') + L('), luchtfoto 2009 (Cyclomedia/Aerodata)', '), aerial photo 2009 (Cyclomedia/Aerodata)');
       } else if (ERA_KEY === '1987') {
-        past = L('1987: Topografische kaart 1987 (Kadaster/', '1987: Topographic map 1987 (Kadaster/') + TOPO + ', ' + a('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0') + '), AHN2';
+        past = L('1987: Topografische kaart 1987 (Kadaster/', '1987: Topographic map 1987 (Kadaster/') + TOPO + ', ' + a('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0') + L('), luchtfoto 2006, zwart-wit (Kadaster), AHN2', '), aerial photo 2006, black and white (Kadaster), AHN2');
       }
       el.innerHTML = base + (past ? '. ' + past : '') + L('. Verhalen: BOEi, AM (Op Enka), Wikipedia', '. Stories: BOEi, AM (Op Enka), Wikipedia');
     };

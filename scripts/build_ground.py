@@ -280,7 +280,9 @@ def value_noise(shape, cell, seed, octaves=1):
 
 
 def main():
-    aerial = load_aerial("aerial-summer")  # in full leaf, with short shadows
+    # An era with a photo of its own (config.ERAS "photo") takes that; the others today's, in full leaf with short shadows.
+    photo = ERA_CONF.get("photo")
+    aerial = load_aerial(f"aerial-{photo}" if photo else "aerial-summer")
     polys = load_polygons()
     print(f"{len(polys)} polygons")
 
@@ -401,9 +403,19 @@ def main():
     img[yard & ~greenish] = paving * (0.97 + 0.05 * n1[yard & ~greenish])[:, None]
     del sm, greenish, yard
 
-    # The real ground from the aerial photo: garden layouts, paths, parked cars, road markings, worn grass.
-    lay_photo(img, aerial, cat, ids, road, chm, med)
-    del aerial, chm
+    # The real ground from the aerial photo: garden layouts, paths, parked cars, road markings, worn grass. The photo of
+    # an era's own year is right in the changed area too: that is painted first (for its classes) and then mostly photo.
+    fresh = None
+    if photo:
+        ch, terrain = paint_era(img, cat, n1, n2, topo=False)
+        fresh = ch | terrain
+        del ch, terrain
+        lay_photo(img, aerial, cat, ids, road, chm, med, fresh=fresh, lean=footprints())
+    elif not ERA_CONF.get("texture"):  # a photo of today's years would put today's streets on the earlier ground
+        lay_photo(img, aerial, cat, ids, road, chm, med)
+    del aerial
+    if not ERA_CONF.get("texture"):
+        del chm
 
     # Pavement patterns.
     # Not on the roads: their layer is sampled by sharp-edged polygons, where a 1 m grid turns into moiré.
@@ -436,12 +448,18 @@ def main():
         dist = ndi.distance_transform_edt(track) * GROUND_RES
         img[track & (dist > 0.4) & (np.mod(dist, 1.22) < 0.12)] = np.array((236, 232, 224), np.float32)
         del dist
-    if ERA is not None:
-        paint_era(img, cat, n1, n2)
+    if ERA is not None and not photo:
+        ch, terrain = paint_era(img, cat, n1, n2)
+        if ERA_CONF.get("texture"):
+            # No photo of that year: the detail of an older one, black and white, where the ground is still the same.
+            lay_texture(img, load_aerial(f"aerial-{ERA_CONF['texture']}")[..., 0], (~ch | terrain) & (cat != CAT["building"]), chm)
+        del ch, terrain, chm
     paint_sidings(img)
 
     # Darken edges between unlike surfaces so plots read as crisp shapes. Roads get their edge from their polygon.
     hard = ~np.isin(cat, list(SOFT)) & ~road
+    if fresh is not None:
+        hard &= ~fresh  # the photo has its own edges there
     border = (cat != np.roll(cat, 1, 0)) | (cat != np.roll(cat, 1, 1))
     img[border & hard] *= 0.86
     del hard, border
@@ -534,9 +552,11 @@ def save_road_polygons(polys, roads, cats):
     print(f"{len(out)} road polygons, {len(edges)} kerb lines")
 
 
-def paint_era(img, cat, n1, n2):
+def paint_era(img, cat, n1, n2, topo=True):
     """The changed area of an earlier era, painted afresh so nothing of today's photo shows through: sand with tracks
-    on the building site, and elsewhere lawn with paving round the buildings that stood there then."""
+    on the building site, and elsewhere lawn with paving round the buildings that stood there then. Returns the changed
+    area and the old terrain (rasters). With the era's own photo (topo=False) this only sets the classes and a palette
+    colour under the photo, and the topographic map is left out."""
     def raster(geom, grow=0):
         mask = Image.new("1", (NX, NY), 0)
         d = ImageDraw.Draw(mask)
@@ -568,15 +588,18 @@ def paint_era(img, cat, n1, n2):
         cat[paved], img[paved] = CAT["concrete"], np.array(STYLES["concrete"], np.float32) * (0.97 + 0.05 * n1[paved])[:, None]
     cat[lawn], img[lawn] = CAT["grass"], np.array(STYLES["grass"], np.float32) * (0.94 + 0.1 * n2[lawn])[:, None]
     year = ERA_CONF.get("topo") or ERA_CONF.get("topo_blind")
+    terrain = np.zeros_like(ch)
     if year:
         terrain = raster(old_terrain()) & (cat != CAT["building"])
-        paint_topo(img, cat, (ch | terrain) & ~site, year, n2)
+        if topo:
+            paint_topo(img, cat, (ch | terrain) & ~site, year, n2)
     # Sand worked over by machines: darker damp patches and the tracks of the shovels.
     tracks = (np.sin(np.arange(NX, dtype=np.float32)[None, :] * 0.35 + n2 * 40) > 0.9)
     cat[site] = CAT["bare"]
     img[site] = np.array(STYLES["bare"], np.float32) * (0.9 + 0.14 * n1[site])[:, None]
     img[site & (n2 > 0.62)] *= 0.86
     img[site & tracks] *= 0.92
+    return ch, terrain
 
 
 # The colours of the Kadaster's topographic maps and what they stand for on the ground (scripts/topo_fetch.py).
@@ -766,16 +789,51 @@ PHOTO = {"grass": 0.65, "meadow": 0.65, "berm": 0.6, "bank": 0.5, "orchard": 0.5
          "ditch": 0.4, "yard": 0.65, "dirt": 0.6, "sand": 0.6, "gap": 0.5, "shrub": 0.35, "forest": 0.3, "asphalt": 0.6,
          "motorway": 0.6, "concrete_pavers": 0.55, "tiles": 0.55, "clinkers": 0.55, "concrete": 0.55, "gravel": 0.6,
          "grass_pavers": 0.6, "bridge": 0.5, "cyclepath": 0.5}
+FRESH = 0.92  # the share of the era's own photo in a changed area
 SMALL = 4  # the photo's gaps are filled at 1 m, they are smooth anyway
 
 
-def lay_photo(img, aerial, cat, ids, road, chm, med, step=1000, halo=48):
+def footprints():
+    """The footprints of the era's own buildings (footprints.json, the demolished ones too) as a raster: where a roof in
+    the era's photo leans past them."""
+    mask = Image.new("1", (NX, NY), 0)
+    d = ImageDraw.Draw(mask)
+    for ring in json.loads((BUILD / "footprints.json").read_text()):
+        d.polygon([((x + CX - XMIN) / GROUND_RES, (YMAX - CY + z) / GROUND_RES) for x, z in ring], fill=1)
+    return np.array(mask)
+
+
+def lay_texture(img, gray, where, chm, amount=0.4, step=1000, halo=48):
+    """Give `img` the detail of a black and white photo (garden layouts, paths, worn grass, the light and dark of
+    yards) but none of its colour: the photo's brightness against its surroundings at 1 m, strip by strip. Not under
+    crowns and next to buildings, which are drawn in 3D and lean in the photo."""
+    lean = footprints()
+    gauss = ndi.gaussian_filter
+    for r0 in range(0, NY, step):
+        r1 = min(r0 + step, NY)
+        y0, y1 = max(r0 - halo, 0), min(r1 + halo, NY)
+        y = gray[y0:y1].astype(np.float32)
+        ch = np.repeat(np.repeat(chm[y0 // 2 : y1 // 2], 2, 0), 2, 1)[:, : y.shape[1]]
+        skip = ndi.maximum_filter(((ch > 2.0) | lean[y0:y1]).astype(np.uint8), size=25) > 0
+        del ch
+        low = gauss(y, 3)
+        rel = np.clip((gauss(y, 0.7) - low) / np.maximum(low, 30), -0.5, 0.5)
+        w = where[y0:y1] & ~skip
+        k0 = r0 - y0
+        sub = img[r0:r1]
+        sub *= (1 + amount * rel * gauss(w.astype(np.float32), 2))[k0 : k0 + (r1 - r0), :, None]
+        del y, low, rel, w, skip
+
+
+def lay_photo(img, aerial, cat, ids, road, chm, med, step=1000, halo=48, fresh=None, lean=None):
     """Blend the aerial photo into `img`, strip by strip (the map is too big for float copies of the photo).
 
     What the photo gets wrong is replaced by what lies around it: roofs and walls that lean past their footprint and
     the crowns that are drawn in 3D come from the surroundings, and the photo's own shadows, which would double the baked
     ones, are lifted to the polygon's median brightness. Roads take the photo less near their edges, which never line up
-    exactly with the BGT polygon. In an earlier era the changed area is painted over this afterwards (paint_era)."""
+    exactly with the BGT polygon. In an earlier era the changed area is painted over this afterwards (paint_era); with the
+    era's own photo it is `fresh`: the photo is right there, so it is not lifted and takes most of the colour. `lean` then
+    holds the footprints of the era's buildings, which lean where the BGT's buildings of today may be gone."""
     strength = np.zeros(len(STYLES) + 1, np.float32)
     for k, v in PHOTO.items():
         strength[CAT[k]] = v
@@ -795,7 +853,9 @@ def lay_photo(img, aerial, cat, ids, road, chm, med, step=1000, halo=48):
         canopy = grow(ch > 2.0, 6)  # the crowns lean too, and in summer they are full
         # Footprints with a margin for the lean: more where it is tall.
         # (a BGT building the lidar doesn't see, which has no 3D model, shows its roof as it is)
-        occl = grow((cs == CAT["building"]) & (ch > 2.0), 12) | canopy | grow(ch > 6.0, 16)
+        built = (cs == CAT["building"]) & (ch > 2.0) if lean is None else lean[y0:y1]
+        occl = grow(built, 12) | canopy | grow(ch > 6.0, 16)
+        fr = None if fresh is None else fresh[y0:y1]
         del ch
 
         p = aerial[y0:y1].astype(np.float32)
@@ -805,6 +865,8 @@ def lay_photo(img, aerial, cat, ids, road, chm, med, step=1000, halo=48):
         low = gauss(y, 4)
         rho = gauss(y, 1.5) / np.maximum(ref, 20)
         dark = (rho < 0.8) & ~occl & (ref > 25)
+        if fr is not None:
+            dark &= ~fr  # the polygon's median is of today's: no reference for a pond in a changed area
         dark = ndi.maximum_filter(ndi.minimum_filter(dark.astype(np.uint8), size=9), size=9)
         lift = np.clip(0.9 * ref / np.maximum(low, 8), 1, 2.4)
         soft = gauss(dark.astype(np.float32), 2)
@@ -844,7 +906,10 @@ def lay_photo(img, aerial, cat, ids, road, chm, med, step=1000, halo=48):
 
         # Roads: calm near the edge, the photo from 2.5 m in.
         ramp = np.where(rd, np.clip((ndi.distance_transform_edt(rd) - 2) / 8, 0, 1), 1.0).astype(np.float32)
-        a = (strength[cs] * ramp)[..., None]
+        a = strength[cs] * ramp
+        if fr is not None:
+            a = np.where(fr, FRESH, a)
+        a = a[..., None]
         k0 = r0 - y0
         sub = sub[k0 : k0 + (r1 - r0)]
         a, p = a[k0 : k0 + (r1 - r0)], p[k0 : k0 + (r1 - r0)]

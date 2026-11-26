@@ -5,6 +5,7 @@
 """Download the raw open data for the area: 3D BAG, BGT, aerial photos and AHN."""
 
 import json
+import math
 import sys
 import time
 import urllib.parse
@@ -172,6 +173,61 @@ def fetch_aerial(ix, iy, chunk=CHUNK, res=0.25, name="aerial"):
         }
     )
     out.write_bytes(get(f"https://service.pdok.nl/hwh/luchtfotorgb/wms/v1_0?{q}", binary=True))
+
+
+# The aerial photos of earlier years (Kadaster and Cyclomedia/Aerodata, free to use with attribution) are ArcGIS tile
+# services like the topographic maps (scripts/topo_fetch.py): the finest level with tiles is 13, 0.397 m per pixel.
+# Each is cut into the same 500 m chunks at 0.25 m as the others, for the earlier eras' area, named aerial-<year>.
+OLD_AERIAL = "https://tiles.arcgis.com/tiles/nSZVuSZjHpEZZbRo/arcgis/rest/services/Luchtfoto_{year}/MapServer"
+OLD_LEVEL = 13
+
+
+def old_aerials():
+    """The years of the aerial photos the eras use: ERAS "photo" (colour) and "texture" (black and white)."""
+    return sorted({v for e in ERAS.values() for k, v in e.items() if k in ("photo", "texture")})
+
+
+def fetch_old_aerial(year, ix, iy, tiles, chunk=CHUNK, res=0.25):
+    """One chunk of the photo of `year` at `res`, resampled from the service's tiles (cached in data/raw/luchtfoto-<year>)."""
+    from PIL import Image
+
+    d = RAW / f"aerial-{year}"
+    d.mkdir(exist_ok=True)
+    x0, y0 = PAST[0] + ix * chunk, PAST[1] + iy * chunk
+    out = d / f"{x0}_{y0}.jpg"
+    if out.exists():
+        return
+    ox, oy, tres = tiles
+    span = 256 * tres
+    c0, c1 = math.floor((x0 - 2 - ox) / span), math.floor((x0 + chunk + 2 - ox) / span)
+    r0, r1 = math.floor((oy - (y0 + chunk + 2)) / span), math.floor((oy - (y0 - 2)) / span)
+    cache = RAW / f"luchtfoto-{year}"
+    cache.mkdir(exist_ok=True)
+    mosaic = Image.new("RGB", ((c1 - c0 + 1) * 256, (r1 - r0 + 1) * 256), (128, 128, 128))
+    for r in range(r0, r1 + 1):
+        for c in range(c0, c1 + 1):
+            f = cache / f"{OLD_LEVEL}_{r}_{c}.jpg"
+            if not f.exists():
+                tmp = f.with_name(f.name + f".{ix}_{iy}")  # neighbouring chunks share tiles
+                tmp.write_bytes(get(f"{OLD_AERIAL.format(year=year)}/tile/{OLD_LEVEL}/{r}/{c}", binary=True))
+                tmp.replace(f)
+            mosaic.paste(Image.open(f).convert("RGB"), ((c - c0) * 256, (r - r0) * 256))
+    k = res / tres  # source pixels per output pixel
+    mosaic.transform((int(chunk / res),) * 2, Image.AFFINE, (k, 0, (x0 - (ox + c0 * span)) / tres, 0, k, ((oy - r0 * span) - (y0 + chunk)) / tres),
+                     Image.BICUBIC).save(out, quality=93)
+
+
+def fetch_old_aerials():
+    """Every old aerial photo the eras use, for the earlier eras' area (PAST). Run with pillow: see build.sh."""
+    for year in old_aerials():
+        info = get(f"{OLD_AERIAL.format(year=year)}?f=json")["tileInfo"]
+        lod = next(l for l in info["lods"] if l["level"] == OLD_LEVEL)
+        tiles = (info["origin"]["x"], info["origin"]["y"], lod["resolution"])
+        nx, ny = int((PAST[2] - PAST[0]) / CHUNK), int((PAST[3] - PAST[1]) / CHUNK)
+        with ThreadPoolExecutor(8) as pool:
+            for fut in [pool.submit(fetch_old_aerial, year, i, j, tiles) for i in range(nx) for j in range(ny)]:
+                fut.result()
+        print(f"aerial {year}: done", file=sys.stderr)
 
 
 def fetch_ahn(cov, ix, iy, chunk=CHUNK):
