@@ -143,8 +143,14 @@ def fetch_bgt(coll):
     print(f"bgt {coll}: {len(current)} current of {len(feats)}", file=sys.stderr)
 
 
-def fetch_aerial(ix, iy, chunk=CHUNK, res=0.25):
-    d = RAW / "aerial"
+# The aerial photo comes in two flights a year: the winter one (8 cm, bare trees, long shadows) shows the roofs and the
+# ground under the trees, the summer one (25 cm) the colours of a map in leaf. The quick ortho is that summer's first
+# release: the final one of the year before still shows the building sites round the station.
+AERIAL = {"aerial": "Actueel_orthoHR", "aerial-summer": "2026_quickortho25"}
+
+
+def fetch_aerial(ix, iy, chunk=CHUNK, res=0.25, name="aerial"):
+    d = RAW / name
     d.mkdir(exist_ok=True)
     x0, y0 = XMIN + ix * chunk, YMIN + iy * chunk
     out = d / f"{x0}_{y0}.jpg"
@@ -156,7 +162,7 @@ def fetch_aerial(ix, iy, chunk=CHUNK, res=0.25):
             "SERVICE": "WMS",
             "VERSION": "1.3.0",
             "REQUEST": "GetMap",
-            "LAYERS": "Actueel_orthoHR",
+            "LAYERS": AERIAL[name],
             "STYLES": "",
             "CRS": "EPSG:28992",
             "BBOX": f"{x0},{y0},{x0 + chunk},{y0 + chunk}",
@@ -348,7 +354,7 @@ def main():
     migrate()
     jobs = [fetch_3dbag, fetch_addresses, fetch_osm, fetch_routes, fetch_roads, fetch_rail, *(lambda c=c: fetch_bgt(c) for c in BGT_COLLECTIONS)]
     jobs += [lambda c=c, i=i, j=j: fetch_ahn(c, i, j) for c in ("dsm_05m", "dtm_05m") for i in range(NX) for j in range(NY)]
-    jobs += [lambda i=i, j=j: fetch_aerial(i, j) for i in range(NX) for j in range(NY)]
+    jobs += [lambda i=i, j=j, a=a: fetch_aerial(i, j, name=a) for a in AERIAL for i in range(NX) for j in range(NY)]
     with ThreadPoolExecutor(8) as pool:
         for fut in [pool.submit(j) for j in jobs]:
             fut.result()

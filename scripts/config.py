@@ -9,7 +9,10 @@ RAW = ROOT / "data" / "raw"
 
 # The year the map shows: unset for now, or one of ERAS (ERA=2009 ./build.sh). Each era builds into its own folder.
 ERA = os.environ.get("ERA") or None
-BUILD = ROOT / "data" / ("build" if ERA is None else f"build-{ERA}")
+# A try-out build (PROTO=look uv run build_ground.py): today's map, but only PROTO_AREA, into data/build-<name>, so a
+# change to a script shows in a minute instead of after a full build. Render it with render/run.mjs --era <name>.
+PROTO = os.environ.get("PROTO") or None
+BUILD = ROOT / "data" / (f"build-{PROTO}" if PROTO else "build" if ERA is None else f"build-{ERA}")
 NOW = ROOT / "data" / "build"
 
 # The years the map can also show, and what they are made of:
@@ -62,7 +65,9 @@ AREAS = {
     "2009": (174250, 447500, 176750, 450500),
     "1987": (174250, 447500, 176750, 450500),
 }
-AREA = AREAS[ERA]
+# The try-out area: 1 x 1 km with the station, the Enka terrain and the streets of terraced houses north of the railway.
+PROTO_AREA = (174250, 448000, 175250, 449000)
+AREA = PROTO_AREA if PROTO else AREAS[ERA]
 XMIN, YMIN, XMAX, YMAX = AREA
 NOW_AREA = AREAS[None]  # what the bbox downloads cover
 CX, CY = (XMIN + XMAX) / 2, (YMIN + YMAX) / 2

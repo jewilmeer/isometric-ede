@@ -29,32 +29,32 @@ NX, NY = int((XMAX - XMIN) / GROUND_RES), int((YMAX - YMIN) / GROUND_RES)
 # Style categories. Order matters only for readability.
 STYLES = {
     "gap": (150, 150, 120),
-    "grass": (116, 160, 70),
-    "meadow": (124, 166, 74),
-    "berm": (120, 158, 74),
-    "shrub": (84, 122, 56),
-    "forest": (68, 98, 50),
+    "grass": (112, 150, 74),
+    "meadow": (118, 154, 76),
+    "berm": (114, 150, 74),
+    "shrub": (84, 114, 58),
+    "forest": (66, 92, 52),
     "field": (150, 118, 82),
-    "orchard": (118, 152, 72),
+    "orchard": (114, 146, 74),
     "heath": (146, 118, 96),
     "marsh": (104, 132, 92),
-    "water": (70, 128, 172),
+    "water": (68, 120, 158),
     "ditch": (98, 128, 70),
-    "bank": (108, 144, 68),
-    "yard": (160, 155, 140),
+    "bank": (106, 138, 70),
+    "yard": (158, 152, 138),
     "sand": (222, 204, 160),
-    "asphalt": (98, 100, 106),
+    "asphalt": (104, 104, 106),
     "motorway": (84, 86, 92),
     "concrete_pavers": (160, 156, 148),
     "tiles": (180, 177, 170),
-    "clinkers": (164, 104, 84),
+    "clinkers": (150, 106, 90),
     "concrete": (178, 175, 164),
     "gravel": (176, 164, 138),
     "grass_pavers": (138, 160, 98),
     "dirt": (178, 156, 114),
     "building": (168, 162, 150),
     "bridge": (150, 140, 126),
-    "cyclepath": (212, 118, 60),
+    "cyclepath": (188, 110, 78),
     "bare": (206, 184, 140),
     "tartan": (192, 88, 58),  # the athletics track  # a building site in an earlier era (scripts/era.py)
 }
@@ -280,7 +280,7 @@ def value_noise(shape, cell, seed, octaves=1):
 
 
 def main():
-    aerial = load_aerial()
+    aerial = load_aerial("aerial-summer")  # in full leaf, with short shadows
     polys = load_polygons()
     print(f"{len(polys)} polygons")
 
@@ -297,6 +297,7 @@ def main():
     chm_hi = np.repeat(np.repeat(chm, 2, 0), 2, 1)
     lab = ids[::4, ::4].copy()
     lab[chm_hi[::4, ::4] > 2.0] = 0
+    del chm_hi
     small = aerial[::4, ::4].astype(np.float32)
     idx = np.arange(1, len(polys) + 1)
     med = np.stack([ndi.median(small[..., c], lab, idx) for c in range(3)], -1)
@@ -328,14 +329,14 @@ def main():
             else:
                 c = np.array((136, 160, 76), np.float32)
         elif s == "meadow" and m[0] >= m[1] - 2:
-            # Brown in the spring photo: the moor grass of the Peel, not a green pasture.
+            # Brown in the photo: the moor grass of the Peel, not a green pasture.
             s = "heath"
             cats[i] = CAT[s]
             c = 0.45 * np.array(STYLES["heath"], np.float32) + 0.55 * m * np.array((1.08, 1.02, 0.9), np.float32)
         elif s in ("meadow", "grass", "berm"):
             c = c * (0.94 + 0.12 * rng.random())
-        elif s == "yard":
-            c = 0.55 * m + 0.45 * c
+        elif s == "water":
+            c = 0.75 * c + 0.25 * m  # tinted by the photo, which has glare and algae: not laid over
         elif s == "heath":
             c = 0.5 * c + 0.5 * m
         base[i] = c
@@ -348,7 +349,7 @@ def main():
     cat = cats[ids]
     img = base[ids]  # (N, N, 3) float32
     road = roads[ids]
-    # Bare ground inside a changed area that no polygon of its own made park, and the grass the spring photo still
+    # Bare ground inside a changed area that no polygon of its own made park, and the grass the photo still
     # shows as bare sand: lawn as well.
     if areas:
         mask = Image.new("1", (NX, NY), 0)
@@ -357,9 +358,6 @@ def main():
         bare = np.array(mask) & np.isin(cat, [CAT[k] for k in (*TO_PARK, "heath", "meadow")]) & ~road
         cat[bare], img[bare] = CAT["grass"], np.array(STYLES["grass"], np.float32)
         del mask, bare
-    # The outer metre of a road stays clean: the photo's road edge never lines up exactly with the BGT polygon,
-    # and its detail there turns a straight road edge into a blotchy one.
-    road_rim = road & ~ndi.binary_erosion(road, iterations=4)
 
     yy, xx = np.ogrid[0:NY, 0:NX]
     yy, xx = yy.astype(np.float32), xx.astype(np.float32)
@@ -403,30 +401,9 @@ def main():
     img[yard & ~greenish] = paving * (0.97 + 0.05 * n1[yard & ~greenish])[:, None]
     del sm, greenish, yard
 
-    # Real objects from the aerial photo: parked cars, road markings, garden paths, sheds' surroundings.
-    # Only distinct things come through (a strong local contrast), not the photo's grain.
-    paved = np.isin(cat, [CAT[k] for k in ("asphalt", "motorway", "concrete_pavers", "tiles", "clinkers", "concrete",
-                                           "gravel", "grass_pavers", "bridge")]) & ~road_rim
-    yard = cat == CAT["yard"]
-    lum = aerial.astype(np.float32).mean(-1)
-    strong = np.abs(lum - ndi.gaussian_filter(lum, 5)) > 14
-    strong = ndi.binary_opening(strong, iterations=1)  # objects, not single noisy pixels
-    del lum
-    for k in range(3):
-        ch = aerial[..., k].astype(np.float32)
-        hp = np.where(strong, np.clip(ch - ndi.gaussian_filter(ch, 5), -60, 60), 0)
-        img[..., k][paved] += 0.7 * hp[paved]
-        img[..., k][yard] += 0.3 * hp[yard]
-        del ch, hp
-    del paved, yard, strong
-
-    # Keep a little of the real ground texture (tracks, paths, field patterns) on soft surfaces.
-    lum = aerial.astype(np.float32).mean(-1)
-    detail = lum - ndi.uniform_filter(lum, 9)
-    detail = np.clip(detail, -18, 18)
-    keep = np.isin(cat, [CAT[k] for k in ("field", "heath", "meadow", "marsh", "dirt", "sand", "gap")]) & ~road_rim
-    img[keep] += (0.2 * detail[keep])[:, None]
-    del lum, detail, keep
+    # The real ground from the aerial photo: garden layouts, paths, parked cars, road markings, worn grass.
+    lay_photo(img, aerial, cat, ids, road, chm, med)
+    del aerial, chm
 
     # Pavement patterns.
     # Not on the roads: their layer is sampled by sharp-edged polygons, where a 1 m grid turns into moiré.
@@ -467,7 +444,7 @@ def main():
     hard = ~np.isin(cat, list(SOFT)) & ~road
     border = (cat != np.roll(cat, 1, 0)) | (cat != np.roll(cat, 1, 1))
     img[border & hard] *= 0.86
-    del hard, border, road_rim
+    del hard, border
 
     # Baked shadows from buildings and trees, plus a contact shadow along every wall.
     shadow, contact = compute_shadows()
@@ -781,6 +758,99 @@ def paint_osm(img, cat):
         else:
             continue
         sub[np.array(lines) > 0] = np.array((240, 240, 236), np.float32)
+
+
+# How much of the photo each surface takes (the rest is its palette colour). The trees are drawn in 3D, so the forest floor
+# and shrubs show little of the crowns the photo sees from above; roads stay calmer than lawns and yards.
+PHOTO = {"grass": 0.65, "meadow": 0.65, "berm": 0.6, "bank": 0.5, "orchard": 0.5, "field": 0.6, "heath": 0.55, "marsh": 0.45,
+         "ditch": 0.4, "yard": 0.65, "dirt": 0.6, "sand": 0.6, "gap": 0.5, "shrub": 0.35, "forest": 0.3, "asphalt": 0.6,
+         "motorway": 0.6, "concrete_pavers": 0.55, "tiles": 0.55, "clinkers": 0.55, "concrete": 0.55, "gravel": 0.6,
+         "grass_pavers": 0.6, "bridge": 0.5, "cyclepath": 0.5}
+SMALL = 4  # the photo's gaps are filled at 1 m, they are smooth anyway
+
+
+def lay_photo(img, aerial, cat, ids, road, chm, med, step=1000, halo=48):
+    """Blend the aerial photo into `img`, strip by strip (the map is too big for float copies of the photo).
+
+    What the photo gets wrong is replaced by what lies around it: roofs and walls that lean past their footprint and
+    the crowns that are drawn in 3D come from the surroundings, and the photo's own shadows, which would double the baked
+    ones, are lifted to the polygon's median brightness. Roads take the photo less near their edges, which never line up
+    exactly with the BGT polygon. In an earlier era the changed area is painted over this afterwards (paint_era)."""
+    strength = np.zeros(len(STYLES) + 1, np.float32)
+    for k, v in PHOTO.items():
+        strength[CAT[k]] = v
+    hard_cat = np.zeros(len(STYLES) + 1, bool)
+    hard_cat[[CAT[k] for k in ("yard", "asphalt", "motorway", "concrete_pavers", "tiles", "clinkers", "concrete", "gravel",
+                               "grass_pavers", "bridge", "cyclepath")]] = True
+    medfull = np.vstack([[128.0, 128, 128], med]).astype(np.float32)
+    medy = medfull @ np.float32([0.299, 0.587, 0.114])
+    grow = lambda m, r: ndi.maximum_filter(m.astype(np.uint8), size=2 * r + 1).astype(bool)
+    gauss = ndi.gaussian_filter
+    for r0 in range(0, NY, step):
+        r1 = min(r0 + step, NY)
+        y0, y1 = max(r0 - halo, 0), min(r1 + halo, NY)
+        cs, rd, idp = cat[y0:y1], road[y0:y1], ids[y0:y1]
+        h, w = cs.shape
+        ch = np.repeat(np.repeat(chm[y0 // 2 : y1 // 2], 2, 0), 2, 1)[:, :w]
+        canopy = grow(ch > 2.0, 6)  # the crowns lean too, and in summer they are full
+        # Footprints with a margin for the lean: more where it is tall.
+        # (a BGT building the lidar doesn't see, which has no 3D model, shows its roof as it is)
+        occl = grow((cs == CAT["building"]) & (ch > 2.0), 12) | canopy | grow(ch > 6.0, 16)
+        del ch
+
+        p = aerial[y0:y1].astype(np.float32)
+        # Lift the photo's shadows (broad dark areas: not cars, which are narrower) to the polygon's median.
+        y = p @ np.float32([0.299, 0.587, 0.114])
+        ref = medy[idp]
+        low = gauss(y, 4)
+        rho = gauss(y, 1.5) / np.maximum(ref, 20)
+        dark = (rho < 0.8) & ~occl & (ref > 25)
+        dark = ndi.maximum_filter(ndi.minimum_filter(dark.astype(np.uint8), size=9), size=9)
+        lift = np.clip(0.9 * ref / np.maximum(low, 8), 1, 2.4)
+        soft = gauss(dark.astype(np.float32), 2)
+        gain = (1 + soft * (lift - 1))[..., None]
+        # The light in a shadow is blue: take the polygon's own colour there, with the photo's brightness.
+        own = (y * gain[..., 0] / np.maximum(medy[idp], 20))[..., None] * medfull[idp]
+        p *= gain
+        p += (0.7 * soft)[..., None] * (own - p)
+        del y, ref, low, rho, dark, lift, soft, gain, own
+        # A little more colour and light, for the tidy look.
+        m = p.mean(-1, keepdims=True)
+        p = np.clip((m + 1.15 * (p - m)) * 1.08, 0, 255, out=p)
+        del m
+
+        # What the photo can't show: from the valid photo around, per kind of surface, at 1 m.
+        hard = hard_cat[cs]
+        fill = np.zeros_like(p)
+        conf = np.zeros((h, w, 1), np.float32)
+        s = SMALL
+        for g in (hard, ~hard):
+            v = (g & ~occl).astype(np.float32)
+            vs = v.reshape(h // s, s, w // s, s).mean((1, 3))
+            ps = (p * v[..., None]).reshape(h // s, s, w // s, s, 3).mean((1, 3))
+            den = gauss(vs, 3)
+            f = gauss(ps, (3, 3, 0)) / np.maximum(den, 1e-3)[..., None]
+            f = ndi.zoom(f, (s, s, 1), order=1)
+            cf = ndi.zoom(np.clip(den / 0.12, 0, 1), s, order=1)[..., None]
+            fill = np.where(g[..., None], f, fill)
+            conf = np.where(g[..., None], cf, conf)
+            del v, vs, ps, den, f, cf
+        sub = img[y0:y1]
+        fill = conf * fill + (1 - conf) * sub
+        fill *= 1 - 0.12 * gauss(canopy.astype(np.float32), 2)[..., None]  # a little darker under the crowns
+        wo = gauss(occl.astype(np.float32), 1.5)[..., None]
+        p = (1 - wo) * p + wo * fill
+        del fill, conf, wo, canopy, occl
+
+        # Roads: calm near the edge, the photo from 2.5 m in.
+        ramp = np.where(rd, np.clip((ndi.distance_transform_edt(rd) - 2) / 8, 0, 1), 1.0).astype(np.float32)
+        a = (strength[cs] * ramp)[..., None]
+        k0 = r0 - y0
+        sub = sub[k0 : k0 + (r1 - r0)]
+        a, p = a[k0 : k0 + (r1 - r0)], p[k0 : k0 + (r1 - r0)]
+        sub *= 1 - a
+        sub += a * p
+        del p, a, ramp, hard
 
 
 def compute_shadows(res=0.5):

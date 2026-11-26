@@ -1,7 +1,7 @@
 // Isometric scene of Helenaveen, rendered tile by tile by render/run.mjs.
 // World units are meters: x east, y up, z south, origin at the center of the 3 x 3 km area.
 import * as THREE from 'three';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeVertices, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 THREE.ColorManagement.enabled = false; // colors are painted in sRGB and used as-is, like pixel art
 
@@ -82,7 +82,10 @@ function wallColor(m) {
   if (m.kind === 'tank') return [rgb(74, 98, 82), rgb(150, 150, 140), rgb(64, 72, 80)][Math.floor(m.rand * 3)];
   if (m.kind === 'silo') return rgb(196, 198, 192);
   if (m.kind === 'barn' || m.kind === 'shed') return pickWeighted(WALLS_BARN, m.rand);
-  return pickWeighted(era(m)[1], m.rand);
+  // Real brick is duller than a palette swatch: a little grey in, and a bit of tone from house to house.
+  const c = pickWeighted(era(m)[1], m.rand).clone();
+  const l = 0.3 * c.r + 0.59 * c.g + 0.11 * c.b;
+  return c.lerp(new THREE.Color(l, l, l), 0.16).multiplyScalar(0.94 + 0.12 * hash(m.rand * 91.7));
 }
 
 async function fetchF32(url) {
@@ -99,6 +102,8 @@ attribute float aType;
 attribute float aAxis;
 attribute vec3 aFrame;
 attribute vec2 aAtlas;
+attribute vec4 aWall;
+varying vec4 vWall;
 varying vec3 vFrame;
 varying vec2 vAtlas;
 varying vec2 vUv2;
@@ -118,30 +123,139 @@ varying vec3 vWorld;
 varying vec3 vWorldNormal;
 varying vec3 vFrame;
 varying vec2 vAtlas;
+varying vec4 vWall;
 uniform sampler2D roofAtlas;
 
+float h11(float p) { return fract(sin(p * 12.9898 + 4.1414) * 43758.5453); }
+float h21(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+// A rectangle with a one pixel soft edge (w: the size of a pixel in meters), so windows don't crawl.
+float rect(vec2 p, vec2 lo, vec2 hi, vec2 w) {
+  vec2 a = smoothstep(lo - 0.5 * w, lo + 0.5 * w, p) * (1.0 - smoothstep(hi - 0.5 * w, hi + 0.5 * w, p));
+  return a.x * a.y;
+}
+
+// A window in the wall at p: frame, glass that mirrors the sky, a light sill and a darker line under it.
+vec3 windowAt(vec3 c, vec2 p, vec2 lo, vec2 hi, vec2 pw, float seed) {
+  if (hi.x - lo.x < 0.5 || hi.y - lo.y < 0.6) return c;
+  vec2 mid = 0.5 * (lo + hi);
+  c *= 1.0 - 0.22 * rect(p, vec2(lo.x, lo.y - 0.2), vec2(hi.x, lo.y - 0.04), pw);
+  c = mix(c, vec3(0.8, 0.78, 0.74), rect(p, vec2(lo.x - 0.07, lo.y - 0.07), vec2(hi.x + 0.07, lo.y + 0.01), pw));
+  c = mix(c, vFrame, rect(p, lo, hi, pw));
+  float t = clamp((p.y - lo.y) / (hi.y - lo.y), 0.0, 1.0);
+  vec3 glass = mix(vec3(0.2, 0.25, 0.32), vec3(0.74, 0.84, 0.95), smoothstep(0.0, 1.0, t) * 0.85);
+  glass += 0.07 * smoothstep(0.1, 0.0, abs((p.x - lo.x) / (hi.x - lo.x) - t * 0.8 - 0.1));
+  if (h11(seed) > 0.72) glass = mix(glass, vec3(0.74, 0.7, 0.62), 0.5 * smoothstep(0.35, 0.5, t));
+  c = mix(c, glass, rect(p, lo + 0.07, hi - 0.07, pw));
+  if (hi.x - lo.x > 1.35) c = mix(c, vFrame, rect(p, vec2(mid.x - 0.03, lo.y), vec2(mid.x + 0.03, hi.y), pw));
+  return c;
+}
+
+// A Dutch house facade: brick with a little weathering, plinth, front door and a big living-room window per bay,
+// smaller windows upstairs, fewer on the gable ends. vUv2.x runs from the start of the wall (see makeBuildings).
+vec3 houseWall(vec3 c, vec2 pw) {
+  float L = vWall.x, eave = vWall.y, seed = vWall.w;
+  float x = vUv2.x, y = vUv2.y;
+  bool gable = vWall.z - eave > 0.8;
+  // Brick: patches of weathering, and at close range the courses.
+  c *= 0.95 + 0.1 * h21(floor(vec2(x / 1.4, y / 0.9)) + seed);
+  float course = smoothstep(0.0, 0.03, abs(fract(y / 0.25) - 0.5) - 0.44);
+  c *= 1.0 - 0.07 * course * (1.0 - smoothstep(0.1, 0.2, pw.y));
+  float y0 = 0.3; // plinth
+  float floors = max(1.0, floor((eave - y0) / 2.75 + 0.5));
+  float sh = (eave - y0) / floors;
+  bool tall = floors > 2.5;
+  float nb = gable ? 1.0 : max(1.0, floor(L / (tall ? 3.4 : 5.4) + 0.5));
+  float bw = L / nb;
+  float bay = min(floor(x / bw), nb - 1.0);
+  float bs = seed + bay * 3.17;
+  float bx = x - bay * bw;
+  if (h11(bs + 9.0) > 0.5) bx = bw - bx; // mirrored bays: doors alternate
+  vec2 p = vec2(bx, y);
+  float st = clamp(floor((y - y0) / sh), 0.0, floors - 1.0);
+  float fl = y0 + st * sh; // floor level of this storey
+  if (bw > 2.4 && y < eave) {
+    if (gable) {
+      // Gable end: a small window per storey, none when it is short.
+      if (L > 3.5) {
+        float nw = L > 7.5 ? 2.0 : 1.0;
+        float k = min(floor(x / (L / nw)), nw - 1.0);
+        float cx = (k + 0.5 + 0.2 * (h11(bs + k) - 0.5)) * L / nw;
+        float ws = seed + k * 5.1 + st * 1.7;
+        if (st > 0.5 || h11(ws) > 0.4) {
+          float sill = fl + 0.9;
+          c = windowAt(c, vec2(x, y), vec2(cx - 0.5, sill), vec2(cx + 0.5, min(sill + 1.25, eave - 0.35)), pw, ws);
+        }
+      }
+    } else if (tall) {
+      // Flats: a regular window per bay, an entrance with glazing in one bay.
+      float sill = fl + (st < 0.5 ? 0.9 : 0.85);
+      bool entrance = st < 0.5 && bay == floor(nb * 0.5);
+      float hw = min(0.7, 0.5 * bw - 0.45);
+      if (entrance) {
+        c = mix(c, vFrame, rect(p, vec2(0.5 * bw - 0.8, y0), vec2(0.5 * bw + 0.8, y0 + 2.4), pw));
+        c = windowAt(c, p, vec2(0.5 * bw - 0.7, y0 + 0.1), vec2(0.5 * bw + 0.7, y0 + 2.3), pw, bs);
+      } else {
+        c = windowAt(c, p, vec2(0.5 * bw - hw, sill), vec2(0.5 * bw + hw, min(sill + 1.3, eave - 0.35)), pw, bs + st);
+      }
+    } else {
+      // Houses: ground floor door and living-room window (or two windows in a bay without a door), upstairs two windows.
+      bool door = bay < 0.5 ? true : h11(bs + 2.0) > 0.45;
+      float top = min(y0 + 2.2, eave - 0.3);
+      if (st < 0.5) {
+        if (door) {
+          vec2 dlo = vec2(0.45, y0), dhi = vec2(1.45, y0 + 2.15);
+          float r = h11(bs + 4.0);
+          vec3 dc = r < 0.25 ? vec3(0.18, 0.3, 0.25) : r < 0.5 ? vec3(0.2, 0.3, 0.44) : r < 0.7 ? vec3(0.3, 0.2, 0.14) : r < 0.85 ? vec3(0.86) : vec3(0.44, 0.16, 0.14);
+          c *= 1.0 - 0.3 * rect(p, vec2(dlo.x - 0.15, dhi.y + 0.02), vec2(dhi.x + 0.15, dhi.y + 0.3), pw);
+          c = mix(c, vFrame, rect(p, dlo - vec2(0.07, 0.0), dhi + 0.07, pw));
+          c = mix(c, dc, rect(p, dlo, dhi, pw));
+          c = mix(c, vec3(0.5, 0.62, 0.72), rect(p, vec2(dlo.x + 0.2, dhi.y - 1.0), vec2(dhi.x - 0.2, dhi.y - 0.25), pw));
+          c = mix(c, vec3(0.62, 0.6, 0.57), rect(p, vec2(dlo.x - 0.1, y0 - 0.05), vec2(dhi.x + 0.1, y0 + 0.04), pw));
+          float lw = min(2.6, bw - 2.4);
+          c = windowAt(c, p, vec2(1.9, y0 + 0.75), vec2(1.9 + lw, top), pw, bs + 1.0);
+        } else {
+          float lw = min(2.6, bw - 1.2);
+          c = windowAt(c, p, vec2(0.5 * (bw - lw), y0 + 0.75), vec2(0.5 * (bw + lw), top), pw, bs + 1.0);
+        }
+      } else {
+        float sill = fl + 0.85, wt = min(sill + 1.3, eave - 0.35);
+        if (door && h11(bs + 6.0) > 0.4) {
+          c = windowAt(c, p, vec2(0.55, sill), vec2(1.4, wt), pw, bs + st);
+          float lw = min(1.8, bw - 2.5);
+          c = windowAt(c, p, vec2(1.9, sill), vec2(1.9 + lw, wt), pw, bs + st + 1.0);
+        } else {
+          float ww = min(1.15, 0.5 * bw - 0.6);
+          c = windowAt(c, p, vec2(0.25 * bw - ww * 0.5, sill), vec2(0.25 * bw + ww * 0.5, wt), pw, bs + st);
+          c = windowAt(c, p, vec2(0.75 * bw - ww * 0.5, sill), vec2(0.75 * bw + ww * 0.5, wt), pw, bs + st + 1.0);
+        }
+      }
+    }
+  }
+  // Plinth, and a little contact shade at the foot of the wall.
+  c = mix(c, mix(c * 0.7, vec3(0.42, 0.41, 0.4), 0.4), 1.0 - smoothstep(y0 - pw.y, y0 + pw.y, y));
+  return c * (0.84 + 0.16 * smoothstep(0.0, 1.4, y));
+}
+
 vec3 buildingPattern(vec3 base) {
+  vec2 pw = fwidth(vUv2); // meters per pixel
+  float pwy = fwidth(vWorld.y);
   vec3 c = base;
   bool wall = vKind > 0.5 && vKind < 1.5;
   bool roof = vKind > 1.5;
   int type = int(vType + 0.5);
   if (wall) {
     if (type == 0) {
-      // Houses: a grid of windows per storey, and a darker plinth.
-      float fl = mod(vUv2.y, 2.8);
-      float col = mod(vUv2.x + 0.4, 3.1);
-      bool win = vUv2.y > 0.5 && fl > 0.85 && fl < 2.15 && col > 0.8 && col < 2.2;
-      if (win) {
-        c = vec3(0.21, 0.26, 0.33);
-        if (fl > 1.95 || col < 0.98) c = vFrame;
-      }
-      if (vUv2.y < 0.35) c *= 0.72;
+      c = houseWall(c, pw);
     } else if (type == 1 || type == 2) {
-      // Barns and sheds: corrugated metal or brick with a concrete plinth.
-      if (mod(vUv2.x, 1.2) < 0.3) c *= 0.88;
-      if (vUv2.y < 0.9) c = mix(c, vec3(0.6, 0.6, 0.58), 0.6);
-      float bay = mod(vUv2.x, 14.0);
-      if (type == 1 && bay > 4.0 && bay < 8.0 && vUv2.y < 4.2 && vUv2.y > 0.2) c = vec3(0.36, 0.38, 0.4);
+      // Barns and sheds: soft corrugated ribs or brick, a concrete plinth, on a barn a sliding gate in the middle.
+      float L = vWall.x, y = vUv2.y;
+      c *= 0.95 + 0.05 * cos(6.2832 * vUv2.x / 1.2);
+      c *= 0.93 + 0.07 * smoothstep(0.0, 1.5, y);
+      c = mix(c, vec3(0.6, 0.6, 0.58), 0.6 * (1.0 - smoothstep(0.7 - pw.y, 0.7 + pw.y, y)));
+      if (type == 1 && L > 7.0 && vWall.y > 3.4) {
+        float gx = abs(vUv2.x - 0.5 * L);
+        c = mix(c, vec3(0.36, 0.38, 0.4) * (0.9 + 0.1 * cos(6.2832 * vUv2.x / 0.5)), rect(vec2(gx, y), vec2(-1.0, 0.1), vec2(1.8, 3.2), pw));
+      }
     } else if (type == 3) {
       // Greenhouse glass: pale with the crop showing through, white mullions.
       c = mix(vec3(0.74, 0.82, 0.84), vec3(0.42, 0.58, 0.42), 0.3);
@@ -413,9 +527,9 @@ vec3 buildingPattern(vec3 base) {
       c *= 0.92;
       if (mod(across, 0.9) < 0.07) c *= 0.88;
       if (t > (isFlat ? 1.0 : 1.6) && t < (isFlat ? 3.2 : 2.6) && mod(along, 12.0) > 0.8) {
-        c = vec3(0.55, 0.72, 0.78);
-        if (mod(along, 1.5) < 0.1) c = vec3(0.4, 0.46, 0.5);
-        if (t < (isFlat ? 1.15 : 1.7)) c = vec3(0.4, 0.46, 0.5);
+        c = vec3(0.34, 0.42, 0.48);
+        if (mod(along, 1.5) < 0.1) c = vec3(0.26, 0.29, 0.32);
+        if (t < (isFlat ? 1.15 : 1.7)) c = vec3(0.26, 0.29, 0.32);
       }
     } else if (type == 3) {
       // Venlo greenhouse roof: rows of glass ridges, lit on one side.
@@ -431,7 +545,7 @@ vec3 buildingPattern(vec3 base) {
       if (vAtlas.x >= 0.0) c = texture2D(roofAtlas, vAtlas).rgb;
       if (vWorldNormal.y < 0.97) {
         // Pitched roof: courses of tiles along the contour.
-        if (mod(vWorld.y, 0.55) < 0.16) c *= vAtlas.x >= 0.0 ? 0.93 : 0.86;
+        c *= 1.0 - (vAtlas.x >= 0.0 ? 0.03 : 0.06) * smoothstep(0.35, 0.6, 0.5 + 0.5 * cos(6.2832 * vWorld.y / 0.55)) * (1.0 - smoothstep(0.1, 0.22, pwy));
       } else if (vAtlas.x < 0.0) {
         // Flat roof without a photo: gravel speckle.
         float n = fract(sin(dot(floor(vUv2 * 2.0), vec2(12.9898, 78.233))) * 43758.5453);
@@ -473,9 +587,35 @@ async function makeBuildings() {
     const c = kind[i] === 2 ? roofs[b] : walls[b];
     col.set([c.r, c.g, c.b], i * 3);
   }
+  // The wall extents are not in the data: consecutive triangles of one building with exactly the same normal, in one plane, make one wall (u is relative to
+  // the normal, so a normal that differs a hair shifts it by meters). For houses,
+  // barns and sheds u is made relative to the wall's start, so the facade can be laid out by its length.
+  // wall = [length, eave height, ridge height (above the eave on a gable end), seed].
+  const wall = new Float32Array(n * 4);
+  for (let t = 0; t < n; ) {
+    if (kind[t] !== 1 || Math.abs(nor[t * 3 + 1]) > 0.1) { t += 3; continue; }
+    const b = v[t * COLS + 9], nx = nor[t * 3], nz = nor[t * 3 + 2], d = nx * pos[t * 3] + nz * pos[t * 3 + 2];
+    let e = t + 3;
+    while (e < n && kind[e] === 1 && v[e * COLS + 9] === b && nor[e * 3] === nx && nor[e * 3 + 2] === nz
+      && Math.abs(nx * pos[e * 3] + nz * pos[e * 3 + 2] - d) < 0.05) e += 3;
+    if (type[t] <= 2) {
+      let u0 = Infinity, u1 = -Infinity, top = 0;
+      for (let i = t; i < e; i++) { u0 = Math.min(u0, uv[i * 2]); u1 = Math.max(u1, uv[i * 2]); top = Math.max(top, pos[i * 3 + 1]); }
+      // The eave is the top edge; when the top is a single point (a gable) it is the next height down.
+      let lo = 0, ulo = Infinity, uhi = -Infinity;
+      for (let i = t; i < e; i++) {
+        if (pos[i * 3 + 1] > top - 0.05) { ulo = Math.min(ulo, uv[i * 2]); uhi = Math.max(uhi, uv[i * 2]); } else lo = Math.max(lo, pos[i * 3 + 1]);
+      }
+      const eave = uhi - ulo > 0.3 || lo < 1 ? top : lo;
+      const seed = (b * 0.7137 + u0 * 0.173) % 97;
+      for (let i = t; i < e; i++) { uv[i * 2] -= u0; wall.set([u1 - u0, eave, top, seed], i * 4); }
+    }
+    t = e;
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  g.setAttribute('aWall', new THREE.BufferAttribute(wall, 4));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.setAttribute('aUv', new THREE.BufferAttribute(uv, 2));
   g.setAttribute('aKind', new THREE.BufferAttribute(kind, 1));
@@ -490,7 +630,7 @@ async function makeBuildings() {
       '#include <begin_vertex>',
       `#include <begin_vertex>
        vUv2 = aUv; vKind = aKind; vType = aType; vAxis = aAxis; vFrame = aFrame; vAtlas = aAtlas;
-       vWorld = position; vWorldNormal = normal;`,
+       vWorld = position; vWorldNormal = normal; vWall = aWall;`,
     );
     sh.fragmentShader = buildingFragment + sh.fragmentShader.replace(
       '#include <color_fragment>',
@@ -504,16 +644,27 @@ async function makeBuildings() {
 // ---------------------------------------------------------------------------------------------
 // Trees
 
-const LEAVES = [rgb(78, 124, 50), rgb(92, 138, 56), rgb(66, 112, 48), rgb(106, 146, 60), rgb(84, 116, 44), rgb(72, 130, 64)];
-const NEEDLES = [rgb(44, 84, 54), rgb(52, 92, 58), rgb(38, 74, 50)];
+const LEAVES = [rgb(66, 98, 46), rgb(80, 108, 50), rgb(58, 88, 44), rgb(92, 114, 54), rgb(72, 94, 42), rgb(62, 98, 56), rgb(98, 112, 58)];
+const NEEDLES = [rgb(36, 66, 46), rgb(44, 74, 50), rgb(32, 58, 42)];
 
+// A lumpy crown: a few big lobes (clumps of branches) on top of a little jitter, smooth-shaded.
 function lumpySphere(seed) {
-  const g = new THREE.IcosahedronGeometry(1, 2);
+  const g = new THREE.IcosahedronGeometry(1, 3);
   const p = g.attributes.position;
+  const lobes = Array.from({ length: 7 }, (_, i) => {
+    const a = hash(seed * 17.3 + i * 3.1) * Math.PI * 2, y = hash(seed * 5.7 + i * 1.9) * 1.6 - 0.6, r = Math.sqrt(1 - y * y);
+    return [new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r), 0.12 + 0.18 * hash(seed * 9.1 + i * 7.7)];
+  });
   const seen = new Map();
+  const v = new THREE.Vector3();
   for (let i = 0; i < p.count; i++) {
     const key = `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`;
-    if (!seen.has(key)) seen.set(key, 0.82 + 0.3 * hash(seen.size * 7.1 + seed * 31.7));
+    if (!seen.has(key)) {
+      v.fromBufferAttribute(p, i);
+      let k = 0.86 + 0.06 * hash(seen.size * 7.1 + seed * 31.7);
+      for (const [d, a] of lobes) k += a * Math.max(0, v.dot(d)) ** 5;
+      seen.set(key, k);
+    }
     const k = seen.get(key);
     p.setXYZ(i, p.getX(i) * k, p.getY(i) * k, p.getZ(i) * k);
   }
@@ -523,12 +674,51 @@ function lumpySphere(seed) {
   return smooth;
 }
 
-// Three flat tones per crown: lit, mid and shade, like a cel-shaded illustration.
-function toonRamp() {
-  const t = new THREE.DataTexture(new Uint8Array([70, 70, 70, 255, 150, 150, 150, 255, 255, 255, 255, 255]), 3, 1);
-  t.minFilter = t.magFilter = THREE.NearestFilter;
-  t.needsUpdate = true;
-  return t;
+// A spruce: four tiers of cones, from -0.5 to 0.5 high and 1 wide.
+function spruce() {
+  const tiers = [[1.0, 0.42, 0.0], [0.78, 0.4, 0.22], [0.56, 0.36, 0.46], [0.34, 0.3, 0.7]];
+  const parts = tiers.map(([r, h, y]) => {
+    const g = new THREE.ConeGeometry(r, h, 9, 1, true);
+    g.translate(0, y + h / 2 - 0.5, 0);
+    return g;
+  });
+  return mergeGeometries(parts);
+}
+
+// Leaf clumps and a darker underside on top of the lambert shading: lit by sun and sky, no hard steps. `local` is the
+// vertex in the unit mesh, scaled by the instance back to meters so the clumps are the same size on every tree.
+function treeMaterial(low, high) {
+  const mat = new THREE.MeshLambertMaterial();
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('void main() {', 'varying vec3 vLocal;\nvarying float vH;\nvoid main() {')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vec3 sc = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+        vLocal = position * sc + instanceMatrix[3].xyz * 0.37;
+        vH = (position.y - ${low.toFixed(2)}) / ${(high - low).toFixed(2)};`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('void main() {', `varying vec3 vLocal;
+        varying float vH;
+        float n3(vec3 p) {
+          vec3 i = floor(p), f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = fract(sin(dot(i, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          float b = fract(sin(dot(i + vec3(1, 0, 0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          float c = fract(sin(dot(i + vec3(0, 1, 0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          float d = fract(sin(dot(i + vec3(1, 1, 0), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          float e = fract(sin(dot(i + vec3(0, 0, 1), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          float g = fract(sin(dot(i + vec3(1, 0, 1), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          float h = fract(sin(dot(i + vec3(0, 1, 1), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          float k = fract(sin(dot(i + vec3(1, 1, 1), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+          return mix(mix(mix(a, b, f.x), mix(c, d, f.x), f.y), mix(mix(e, g, f.x), mix(h, k, f.x), f.y), f.z);
+        }
+        void main() {`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float clump = 0.6 * n3(vLocal * 0.9) + 0.4 * n3(vLocal * 2.3 + 7.0);
+        diffuseColor.rgb *= (0.78 + 0.5 * clump) * mix(0.62, 1.0, smoothstep(0.0, 0.7, vH));
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.12, 1.08, 0.8), smoothstep(0.55, 0.9, clump) * 0.5);`);
+  };
+  return mat;
 }
 
 async function makeTrees() {
@@ -536,9 +726,7 @@ async function makeTrees() {
   const n = t.length / 10;
   const group = new THREE.Group();
   const variants = [0, 1, 2].map(lumpySphere);
-  const ramp = toonRamp();
-  const leafMat = new THREE.MeshToonMaterial({ gradientMap: ramp });
-  const needleMat = new THREE.MeshToonMaterial({ gradientMap: ramp });
+  const leafMat = treeMaterial(-0.9, 1.0), needleMat = treeMaterial(-0.5, 0.5);
   const trunkMat = new THREE.MeshLambertMaterial({ color: rgb(92, 72, 54) });
   const counts = [0, 0, 0];
   let conifers = 0;
@@ -547,7 +735,7 @@ async function makeTrees() {
     else counts[Math.floor(t[i * 10 + 9] * 3) % 3]++;
   }
   const crowns = variants.map((g, k) => new THREE.InstancedMesh(g, leafMat, counts[k]));
-  const cones = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 7), needleMat, conifers);
+  const cones = new THREE.InstancedMesh(spruce(), needleMat, conifers);
   const trunks = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), trunkMat, n);
   const fill = [0, 0, 0];
   let ci = 0;
@@ -965,18 +1153,22 @@ function makeLights(scene) {
   const az = SUN_AZIMUTH * deg, el = SUN_ELEVATION * deg;
   // Toward the sun, in world axes: east = +x, north = -z.
   const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
-  const sun = new THREE.DirectionalLight(0xfff4e0, 0.95 * Math.PI);
+  const sun = new THREE.DirectionalLight(0xfff2dc, 1.05 * Math.PI);
   sun.position.copy(dir.multiplyScalar(1000));
   scene.add(sun);
-  scene.add(new THREE.HemisphereLight(0xc8d8f0, 0x6a6450, 0.62 * Math.PI));
+  scene.add(new THREE.HemisphereLight(0xbcd0ee, 0x6a6450, 0.58 * Math.PI));
+  // A weak cool fill from the east side, so that walls out of the sun still differ by their direction.
+  const fill = new THREE.DirectionalLight(0xdce4f2, 0.26 * Math.PI);
+  fill.position.set(Math.sin(80 * deg) * 900, 420, -Math.cos(80 * deg) * 900);
+  scene.add(fill);
 }
 
 const outlineShader = {
-  uniforms: { tColor: { value: null }, tDepth: { value: null }, texel: { value: new THREE.Vector2() }, range: { value: 1 }, bg: { value: BACKGROUND }, radius: { value: 0 },
+  uniforms: { tColor: { value: null }, tDepth: { value: null }, texel: { value: new THREE.Vector2() }, range: { value: 1 }, bg: { value: BACKGROUND }, radius: { value: 0 }, aoStep: { value: 2 },
     objectsPass: { value: false }, invViewProj: { value: new THREE.Matrix4() } },
   vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 texel; uniform float range; uniform vec3 bg; uniform int radius;
+    uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 texel; uniform float range; uniform vec3 bg; uniform int radius; uniform float aoStep;
     uniform bool objectsPass; uniform mat4 invViewProj;
     varying vec2 vUv;
     float depthAt(vec2 uv) { return texture2D(tDepth, uv).x * range; }
@@ -1022,13 +1214,27 @@ const outlineShader = {
       vec4 c = texture2D(tColor, vUv);
       if (radius > 0 && c.a >= 0.75) c.rgb = kuwahara(vUv);
       float d = depthAt(vUv);
-      float gap = 0.0;
-      gap = max(gap, depthAt(vUv + vec2(texel.x, 0.0)) - d);
-      gap = max(gap, depthAt(vUv - vec2(texel.x, 0.0)) - d);
-      gap = max(gap, depthAt(vUv + vec2(0.0, texel.y)) - d);
-      gap = max(gap, depthAt(vUv - vec2(0.0, texel.y)) - d);
-      // A big step in depth means this pixel is the near side of a silhouette: ink it.
-      if (gap > 2.2) c.rgb *= 0.58;
+      if (texture2D(tDepth, vUv).x < 1.0) {
+        // Soft contact shade instead of an ink line: the more of the surroundings (two rings, 1.2 m wide at most) stand
+        // clearly nearer the camera than this pixel, the darker it gets, within 14 m of depth only.
+        float occ = 0.0;
+        for (int k = 0; k < 8; k++) {
+          float a = float(k) * 0.785398;
+          vec2 o = vec2(cos(a), sin(a)) * texel * aoStep;
+          for (int r = 1; r <= 2; r++) {
+            float diff = d - depthAt(vUv + o * float(r));
+            occ += smoothstep(0.5, 3.0, diff) * (1.0 - smoothstep(8.0, 16.0, diff));
+          }
+        }
+        c.rgb *= 1.0 - 0.3 * occ / 16.0;
+        // A big step in depth means this pixel is the near side of a silhouette: a faint edge.
+        float gap = 0.0;
+        gap = max(gap, depthAt(vUv + vec2(texel.x, 0.0)) - d);
+        gap = max(gap, depthAt(vUv - vec2(texel.x, 0.0)) - d);
+        gap = max(gap, depthAt(vUv + vec2(0.0, texel.y)) - d);
+        gap = max(gap, depthAt(vUv - vec2(0.0, texel.y)) - d);
+        if (gap > 2.2) c.rgb *= 0.88;
+      }
       gl_FragColor = vec4(c.rgb, 1.0);
     }`,
 };
@@ -1087,6 +1293,7 @@ async function main() {
     post.uniforms.texel.value.set(1 / w, 1 / h);
     post.uniforms.range.value = cam.far - cam.near;
     post.uniforms.radius.value = radius;
+    post.uniforms.aoStep.value = Math.min(4, Math.max(0.5, 0.6 * scale)); // half of 1.2 m in pixels, within the tile margin
     post.uniforms.objectsPass.value = objectsPass;
     post.uniforms.invViewProj.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse).invert();
     renderer.setRenderTarget(null);

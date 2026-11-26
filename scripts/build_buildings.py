@@ -622,7 +622,7 @@ def greenhouse_height(year):
 
 def main():
     write_area()
-    aerial = load_aerial()
+    aerial = load_aerial("aerial-summer")
     landmarks = json.loads((BUILD / "landmarks.json").read_text()) if (BUILD / "landmarks.json").exists() else {}
     named = landmarks.get("buildings", {})
     verts = []
