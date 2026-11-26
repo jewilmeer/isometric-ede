@@ -57,7 +57,7 @@ ERAS="${ERAS-$(builtin cd scripts && python3 -c "from config import ERAS; print(
 if [ -n "$ERAS" ]; then
   [ -d data/raw/ahn2/chunks ] || (builtin cd scripts && uv run --quiet ahn2.py 2>&1 | { grep -v GDAL_NODATA || true; })
   # The roads, railway and buildings of OpenStreetMap as they were in 2012, the Kadaster's old topographic maps and aerial photos.
-  (builtin cd scripts && python3 -c "import fetch; fetch.fetch_attic(); fetch.fetch_attic_buildings()")
+  (builtin cd scripts && python3 -c "import fetch; fetch.fetch_attic(); fetch.fetch_attic_buildings(); fetch.fetch_bag_demolished()")
   for year in $(builtin cd scripts && python3 -c "from config import ERAS; print(*sorted({str(v) for e in ERAS.values() for k, v in e.items() if k in ('topo', 'topo_blind')}))"); do
     [ -f "data/raw/topo$year/mosaic.png" ] || (builtin cd scripts && uv run --quiet topo_fetch.py "$year")
   done

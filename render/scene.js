@@ -15,7 +15,7 @@ const ROAD_ALPHA = 0.5; // marks road pixels in the color target, see makeRoads 
 
 // The era's data (render/run.mjs --era): data/build for now, data/build-<era> for an earlier year.
 const DATA = new URLSearchParams(location.search).get('data') || '/data/build';
-const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 , dome: 23, mausoleum: 24, station1902: 25, ruin: 26, parking: 27, cinema: 28, mosque: 29, loods: 30, fence: 31 };
+const TYPES = { house: 0, barn: 1, shed: 2, greenhouse: 3, tank: 4, silo: 5, canopy: 6, church: 7, tower: 8, turret: 9, school: 10, mast: 11, cross: 12, bridge: 13, chimney: 14, station: 15, railing: 16, canteen: 17, hall: 18, station_hall: 19, station_tower: 20, factory: 21, stoer: 22 , dome: 23, mausoleum: 24, station1902: 25, ruin: 26, parking: 27, cinema: 28, mosque: 29, loods: 30, fence: 31, hut: 32 };
 
 const rgb = (r, g, b) => new THREE.Color(r / 255, g / 255, b / 255);
 const hash = (x) => {
@@ -82,6 +82,8 @@ function wallColor(m) {
   if (m.kind === 'tank') return [rgb(74, 98, 82), rgb(150, 150, 140), rgb(64, 72, 80)][Math.floor(m.rand * 3)];
   if (m.kind === 'silo') return rgb(196, 198, 192);
   if (m.kind === 'barn' || m.kind === 'shed') return pickWeighted(WALLS_BARN, m.rand);
+  // Outbuildings are plain brick, whatever the year: red to brown.
+  if (m.kind === 'hut') return [rgb(138, 82, 62), rgb(124, 74, 58), rgb(146, 94, 72), rgb(116, 80, 66), rgb(132, 88, 70)][Math.floor(m.rand * 5)].clone().multiplyScalar(0.94 + 0.12 * hash(m.rand * 91.7));
   // Real brick is duller than a palette swatch: a little grey in, and a bit of tone from house to house.
   const c = pickWeighted(era(m)[1], m.rand).clone();
   const l = 0.3 * c.r + 0.59 * c.g + 0.11 * c.b;
@@ -246,6 +248,18 @@ vec3 buildingPattern(vec3 base) {
   if (wall) {
     if (type == 0) {
       c = houseWall(c, pw);
+    } else if (type == 32) {
+      // Outbuildings (a transformer house, a garden shed, a garage): brick without windows, and one steel door, in
+      // the end that looks along the building's axis.
+      float L = vWall.x, x = vUv2.x, y = vUv2.y;
+      c *= 0.95 + 0.1 * h21(floor(vec2(x / 1.4, y / 0.9)) + vWall.w);
+      c *= 1.0 - 0.07 * smoothstep(0.0, 0.03, abs(fract(y / 0.25) - 0.5) - 0.44) * (1.0 - smoothstep(0.1, 0.2, pw.y));
+      if (dot(normalize(vWorldNormal.xz + 1e-5), vec2(cos(vAxis), -sin(vAxis))) > 0.75 && L > 1.5 && vWall.y > 2.2) {
+        vec2 p = vec2(x - 0.5 * L, y);
+        c = mix(c, vec3(0.2, 0.21, 0.23), rect(p, vec2(-0.56, 0.0), vec2(0.56, 2.16), pw));
+        c = mix(c, vec3(0.44, 0.47, 0.5), rect(p, vec2(-0.5, 0.06), vec2(0.5, 2.1), pw));
+      }
+      c *= 0.84 + 0.16 * smoothstep(0.0, 1.4, y);
     } else if (type == 1 || type == 2) {
       // Barns and sheds: soft corrugated ribs or brick, a concrete plinth, on a barn a sliding gate in the middle.
       float L = vWall.x, y = vUv2.y;
@@ -301,8 +315,14 @@ vec3 buildingPattern(vec3 base) {
       }
       if (y < 0.5) c *= 0.8;
     } else if (type == 13) {
-      // Bridge: smooth concrete with a joint every few meters; railings plain.
-      if (mod(vUv2.x, 6.0) < 0.12) c *= 0.9;
+      // Bridge: smooth concrete with a joint every few meters; railings plain, and so is a bank of sand (param 1).
+      if (vAxis > 1.5) {
+        // A wall of stacked concrete blocks (param 2), 1.6 m long and 0.8 m high, in bond: each its own tone of grey.
+        float row = floor(vUv2.y / 0.8), u = vUv2.x / 1.6 + 0.5 * mod(row, 2.0);
+        c *= 0.88 + 0.16 * h21(vec2(floor(u), row));
+        float joint = max(1.0 - smoothstep(0.0, 0.05 + pw.y, fract(vUv2.y / 0.8) * 0.8), 1.0 - smoothstep(0.0, 0.05 + pw.x, fract(u) * 1.6));
+        c *= 1.0 - 0.3 * joint;
+      } else if (vAxis < 0.5 && mod(vUv2.x, 6.0) < 0.12) c *= 0.9;
     } else if (type == 15) {
       // Edge of the station roof: a thin grey fascia.
     } else if (type == 19) {
@@ -603,7 +623,7 @@ async function makeBuildings() {
     let e = t + 3;
     while (e < n && kind[e] === 1 && v[e * COLS + 9] === b && nor[e * 3] === nx && nor[e * 3 + 2] === nz
       && Math.abs(nx * pos[e * 3] + nz * pos[e * 3 + 2] - d) < 0.05) e += 3;
-    if (type[t] <= 2) {
+    if (type[t] <= 2 || type[t] === 32) {
       let u0 = Infinity, u1 = -Infinity, top = 0;
       for (let i = t; i < e; i++) { u0 = Math.min(u0, uv[i * 2]); u1 = Math.max(u1, uv[i * 2]); top = Math.max(top, pos[i * 3 + 1]); }
       // The eave is the top edge; when the top is a single point (a gable) it is the next height down.

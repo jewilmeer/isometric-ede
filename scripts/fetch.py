@@ -366,6 +366,31 @@ out geom tags;"""
             break
 
 
+def fetch_bag_demolished():
+    """The BAG panden with status "Pand gesloopt" in the earlier eras' area (PAST), into bag_gesloopt.json: footprint,
+    year of construction and the date of the demolition document. The Kadaster's OGC API keeps them (the older WFS of
+    PDOK does not serve them); scripts/barracks_buildings.py puts them back on the map of an earlier year."""
+    out = RAW / "bag_gesloopt.json"
+    WANT[out] = PAST
+    if covers(out, PAST):
+        return
+    q = urllib.parse.urlencode(
+        {"status": "Pand gesloopt", "bbox": ",".join(map(str, PAST)), "bbox-crs": RD, "crs": RD, "limit": 1000, "f": "json"})
+    url = f"https://api.pdok.nl/kadaster/bag/ogc/v2/collections/pand/items?{q}"
+    panden = []
+    while url:
+        page = get(url)
+        for f in page["features"]:
+            g, p = f["geometry"], f["properties"]
+            rings = [g["coordinates"][0]] if g["type"] == "Polygon" else [poly[0] for poly in g["coordinates"]]
+            panden += [{"id": p["identificatie"], "bouwjaar": p.get("bouwjaar"), "datum": p.get("documentdatum"),
+                        "ring": [[round(x, 2), round(y, 2)] for x, y in r[:-1]]} for r in rings]
+        url = next((l["href"] for l in page["links"] if l["rel"] == "next"), None)
+    out.write_text(json.dumps(panden))
+    done(out, PAST)
+    print(f"bag: {len(panden)} demolished panden", file=sys.stderr)
+
+
 def fetch_attic():
     """The roads and the railway as OpenStreetMap had them at ATTIC, into osm_roads-2012.json and osm_rail-2012.json.
     History queries are slow, so the roads come in four parts."""

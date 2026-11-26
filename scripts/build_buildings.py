@@ -32,7 +32,7 @@ COLS = 12
 # Roof vertex blocks and footprints per building index, for texturing roofs from the aerial photo afterwards.
 ROOF_BLOCKS = defaultdict(list)
 FOOTPRINT = {}
-ATLAS_KINDS = {"house", "barn", "shed", "church", "school", "tank", "silo", "canopy", "factory", "stoer"}
+ATLAS_KINDS = {"house", "hut", "barn", "shed", "church", "school", "tank", "silo", "canopy", "factory", "stoer"}
 
 # BGT structures that are often missing from the BAG: (height, type).
 EXTRAS = {
@@ -562,8 +562,62 @@ def ribbon(path, half):
     return p + off, p - off
 
 
+BANK = (150, 144, 112)  # the bank of a ramp: sand with thin grass, as on the aerial photo
+
+
+def flight(top, bottom, h0, h1, width, sand_at=None):
+    """A flight of stairs from `top` (at height h0) down to `bottom` (at h1), lying on a bank: its treads and risers,
+    the sand under both sides, and the handrail down the middle. sand_at(x, y) gives the height of the bank under it,
+    where it has one: the steps follow that, a hand above it."""
+    top, run = np.asarray(top, dtype=np.float64), np.asarray(bottom, dtype=np.float64) - np.asarray(top, dtype=np.float64)
+    n = max(1, round((h0 - h1) / 0.17))
+    at = [top + run * k / n for k in range(n + 1)]
+    hs = np.linspace(h0, h1, n + 1)
+    side = np.array((-run[1], run[0])) / np.linalg.norm(run) * width / 2
+    if sand_at:
+        # The highest sand across the width of each step, so neither side of it sinks into the bank.
+        on = [max((v for v in (sand_at(*(p + d)) for d in (side, 0 * side, -side)) if v is not None), default=None) for p in at]
+        hs = np.minimum.accumulate([h if o is None else max(h1, min(h0, o + 0.15)) for h, o in zip(hs, on)])
+    steps, sand, rail = [], [], []
+    for k in range(n):
+        a, c, ha, hc = at[k], at[k + 1], hs[k], hs[k + 1]
+        steps.append((2, [np.array([(*(a + side), hc), (*(a - side), hc), (*(c - side), hc), (*(c + side), hc)])]))
+        if ha - hc > 0.01:
+            steps.append((1, [np.array([(*(a - side), hc), (*(a + side), hc), (*(a + side), ha), (*(a - side), ha)])]))
+        for s in (side, -side):
+            sand.append((1, [np.array([(*(a + s), 0.0), (*(c + s), 0.0), (*(c + s), hc), (*(a + s), hc)])]))
+        # The handrail: a bar at hip height, and a post under it every tenth step, so the steps show through.
+        rail.append((1, [np.array([(*a, ha + 0.88), (*c, hc + 0.88), (*c, hc + 1.0), (*a, ha + 1.0)])]))
+        if k % 10 == 0 or k == n - 1:
+            post = run / np.linalg.norm(run) * 0.1
+            rail.append((1, [np.array([(*c, hc), (*(c + post), hc), (*(c + post), hc + 0.9), (*c, hc + 0.9)])]))
+    return steps, sand, rail
+
+
+def height_on(tris):
+    """A function (x, y) -> the height of a surface of triangles there, or None beside it."""
+    def at(x, y):
+        for t in tris:
+            (x0, y0, z0), (x1, y1, z1), (x2, y2, z2) = t
+            d = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+            if abs(d) < 1e-9:
+                continue
+            u = ((y1 - y2) * (x - x2) + (x2 - x1) * (y - y2)) / d
+            v = ((y2 - y0) * (x - x2) + (x0 - x2) * (y - y2)) / d
+            if u >= -1e-6 and v >= -1e-6 and u + v <= 1 + 1e-6:
+                return u * z0 + v * z1 + (1 - u - v) * z2
+        return None
+    return at
+
+
+def along(line, n):
+    """`n` points evenly along a polyline of (x, y, z) rows."""
+    cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(line[:, :2], axis=0), axis=1))]
+    return np.column_stack([np.interp(np.linspace(0, cum[-1], n), cum, line[:, k]) for k in range(3)])
+
+
 def add_bridges(verts, meta, bridges):
-    """Bridges for cyclists and walkers: a deck that ramps up from the ground at both ends, railings on both sides,
+    """Bridges for cyclists and walkers: a deck that ramps up from the ground at both ends, a handrail on both sides,
     columns under it, open over the tracks."""
     tri = lambda a, b, c: [np.array([a, b, c])]
     for b in bridges:
@@ -571,33 +625,65 @@ def add_bridges(verts, meta, bridges):
         cum = np.r_[0, np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
         s0, s1, H = cum[b["span"][0]], cum[b["span"][1]], b["height"]
         L, R = ribbon(path, b["width"] / 2)
+        # "sidewalk": a footpath of this width beside the cycle path, on the right of the path (the inside of a bend
+        # to the right); the deck's right edge moves out with it.
+        walk, kerb = b.get("sidewalk", 0.0), R
+        if walk:
+            R = ribbon(path, b["width"] / 2 + walk)[1]
         deck = part(meta, f"bridge-{b['name']}", "bridge", 0.0, H, b["wall"], b["deck"])
         rail = part(meta, f"bridge-{b['name']}-rail", "bridge", 0.0, H + 1.1, b["rail"], b["rail"])
-        surf, rails, bank = [], [], []
+        surf, rails, bank, blocks, paving = [], [], [], [], []
+        gaps = [np.asarray(p, dtype=np.float64) for f in b.get("stairs", []) for p in f]
+
+        def railing(a, c, ha, hc):
+            """The handrail along one edge of the deck, from a to c: a bar at 1.1 m on a post every 3 m, so the deck
+            shows through, and open where stairs come off."""
+            n = max(1, int(np.linalg.norm(c - a) / 1.5))
+            out = []
+            for k in range(n):
+                p, q = a + (c - a) * k / n, a + (c - a) * (k + 1) / n
+                hp, hq = ha + (hc - ha) * k / n, ha + (hc - ha) * (k + 1) / n
+                if any(np.linalg.norm((p + q) / 2 - g) < 2.5 for g in gaps):
+                    continue
+                out.append((1, [np.array([(*p, hp + 0.92), (*q, hq + 0.92), (*q, hq + 1.1), (*p, hp + 1.1)])]))
+                if k % 2 == 0:
+                    e = p + (q - p) * 0.1 / max(np.linalg.norm(q - p), 1e-6)
+                    out.append((1, [np.array([(*p, hp), (*e, hp), (*e, hp + 0.92), (*p, hp + 0.92)])]))
+            return out
+
+        # "blocks": between these points of the path the side toward the railway (left of the path) is no slope but a wall
+        # of stacked concrete blocks, with the sand of the bank tipped against it.
+        block0, block1 = b.get("blocks", (0, 0))
         # "embankment": "end": from the end of the span on, the ramp lies on a bank of earth with sloping sides, not on columns.
         dike = b["span"][1] if b.get("embankment") == "end" else len(path)
-        bank_bi = part(meta, f"bridge-{b['name']}-bank", "bridge", 0.0, H, (120, 150, 80), (120, 150, 80)) if dike < len(path) else None
+        bank_bi = part(meta, f"bridge-{b['name']}-bank", "bridge", 0.0, H, BANK, BANK, param=1.0) if dike < len(path) else None
         for i in range(len(path) - 1):
             h0, h1 = hs[i], hs[i + 1]
-            l0, l1, r0, r1 = (*L[i], h0), (*L[i + 1], h1), (*R[i], h0), (*R[i + 1], h1)
+            l0, l1, r0, r1 = (*L[i], h0), (*L[i + 1], h1), (*kerb[i], h0), (*kerb[i + 1], h1)
             surf += [(2, tri(l0, r0, r1)), (2, tri(l0, r1, l1))]
+            if walk:
+                o0, o1 = (*R[i], h0), (*R[i + 1], h1)
+                paving += [(2, tri(r0, o0, o1)), (2, tri(r0, o1, r1))]
             if i >= dike:
-                # The bank under the deck: each side slopes out 1 m for every 1.1 m of height; the rail stays on the deck.
+                # The bank under the deck: each side slopes out 1 m for every 1.1 m of height. No handrail: there is
+                # nothing to fall off.
                 for P, Q, a_i, c_i, ha, hc, sign in ((L, R, i + 1, i, h1, h0, 1), (R, L, i, i + 1, h0, h1, -1)):
                     out_dir = lambda k: (P[k] - Q[k]) / (np.linalg.norm(P[k] - Q[k]) or 1)
                     a, c = P[a_i], P[c_i]
                     a_o, c_o = a + out_dir(a_i) * ha / 1.1, c + out_dir(c_i) * hc / 1.1
                     if max(ha, hc) < 0.05:
                         continue
-                    bank.append((1, [np.array([(*a_o, 0.0), (*c_o, 0.0), (*c, hc), (*a, ha)])]))
-                    rails.append((1, [np.array([(*a, ha), (*c, hc), (*c, hc + 1.1), (*a, ha + 1.1)])]))
+                    if sign == 1 and block0 <= i < block1:
+                        blocks.append((1, [np.array([(*a, 0.0), (*c, 0.0), (*c, hc), (*a, ha)])]))
+                    else:
+                        bank.append((1, [np.array([(*a_o, 0.0), (*c_o, 0.0), (*c, hc), (*a, ha)])]))
                 continue
             # The edge of the deck, 0.8 m thick, down to the ground where the ramp is low. Each wall runs with its
             # outside on the right, as in extrude().
             for a, c, ha, hc in ((L[i + 1], L[i], h1, h0), (R[i], R[i + 1], h0, h1)):
                 lo_a, lo_c = (0.0 if ha < 2.0 else ha - 0.8), (0.0 if hc < 2.0 else hc - 0.8)
                 surf.append((1, [np.array([(*a, lo_a), (*c, lo_c), (*c, hc), (*a, ha)])]))
-                rails.append((1, [np.array([(*a, ha), (*c, hc), (*c, hc + 1.1), (*a, ha + 1.1)])]))
+                rails += railing(a, c, ha, hc)
         # Columns every 12 m where the deck is high, but none on the tracks.
         for s in np.arange(6, cum[-1], 12.0):
             h = float(np.interp(s, cum, hs))
@@ -613,6 +699,45 @@ def add_bridges(verts, meta, bridges):
             emit(verts, bank, bank_bi, 0.0)
         emit(verts, surf, deck, 0.0)
         emit(verts, rails, rail, 0.0)
+        if paving:
+            emit(verts, paving, part(meta, f"bridge-{b['name']}-walk", "bridge", 0.0, H, b["walk"], b["walk"], param=1.0), 0.0)
+        if blocks:
+            emit(verts, blocks, part(meta, f"bridge-{b['name']}-blocks", "bridge", 0.0, H, b["block"], b["block"], param=2.0), 0.0)
+        sand_at = None
+        if b.get("fill"):
+            # The inside of the hairpin: the inner edge of the deck from the abutment round the bend, folded double at
+            # its far end, and a slope of sand from each point of the upper leg to the one across from it on the lower.
+            i0, i1 = b["fill"]
+            inner = np.column_stack([R[i0 : i1 + 1], hs[i0 : i1 + 1]])
+            far = int(np.linalg.norm(inner[:, :2] - inner[0, :2], axis=1).argmax())
+            upper, lower = along(inner[: far + 1], 32), along(inner[far:][::-1], 32)
+            slope = [t for k in range(31) for t in (tri(upper[k], lower[k], lower[k + 1]), tri(upper[k], lower[k + 1], upper[k + 1]))]
+            sand_at = height_on([t[0] for t in slope])
+            # Its open end under the abutment: a bank like the others, 1 m out for every 1.1 m of height.
+            out_dir = np.array((upper[0, 1] - lower[0, 1], lower[0, 0] - upper[0, 0]))
+            out_dir /= np.linalg.norm(out_dir)
+            if np.dot(out_dir, inner[far, :2] - upper[0, :2]) > 0:
+                out_dir = -out_dir
+            foot = lambda p: (*(p[:2] + out_dir * p[2] / 1.1), 0.0)
+            end = [np.array([foot(upper[0]), foot(lower[0]), tuple(lower[0]), tuple(upper[0])])]
+            emit(verts, [(2, t) for t in slope] + [(1, end)], bank_bi, 0.0)
+        if b.get("stairs"):
+            # Each flight starts and ends at the height of the deck it touches, or on the ground.
+            def deck_height(p):
+                p, best = np.asarray(p, dtype=np.float64), (b["width"] / 2 + walk + 1, 0.0)
+                for i in range(len(path) - 1):
+                    seg = path[i + 1] - path[i]
+                    t = float(np.clip(np.dot(p - path[i], seg) / max(np.dot(seg, seg), 1e-9), 0, 1))
+                    best = min(best, (float(np.linalg.norm(path[i] + seg * t - p)), float(hs[i] + (hs[i + 1] - hs[i]) * t)))
+                return best[1]
+
+            steps = []
+            for top, bottom in b["stairs"]:
+                treads, sand, handrail = flight(top, bottom, deck_height(top), deck_height(bottom), b.get("stair_width", 3.4), sand_at)
+                steps += treads
+                emit(verts, sand, bank_bi, 0.0)
+                emit(verts, handrail, rail, 0.0)
+            emit(verts, steps, part(meta, f"bridge-{b['name']}-stairs", "bridge", 0.0, H, b["stair"], b["stair"]), 0.0)
 
 
 def greenhouse_height(year):
@@ -685,6 +810,8 @@ def main():
             area = attrs.get("b3_opp_grond") or 0
             if area > 250 and height < 10:
                 kind = "barn"
+            elif 0 < area < 30 and height < 4.0:
+                kind = "hut"  # a transformer house, a garden shed, a garage: no windows, one door
         lm = named.get(parent_id)
         if lm:
             kind = lm["style"]
@@ -855,6 +982,10 @@ def add_demolished(verts, meta, footprints):
             found += [(ring, h, "barracks") for ring, h in topo_buildings.find(kept, ERA_CONF["topo_blind"], within=blind.buffer(10))]
         if ERA_CONF.get("osm") == "2012":
             found += [(ring, h, "osm") for ring, h in osm_2012(kept + [ring for ring, _, _ in found])]
+    if (RAW / "bag_gesloopt.json").exists():
+        import barracks_buildings  # what the BAG says was demolished: the sheds and blocks of the barracks
+
+        found = barracks_buildings.merge(found, kept)
     station = old_station()
     if station is not None:
         from shapely.geometry import Polygon as Poly
@@ -871,12 +1002,19 @@ def add_demolished(verts, meta, footprints):
         rand = stable_rand(f"ahn2-{bi}")
         # Only the factory halls have shed roofs; the barracks blocks of the military terrain have storeys of windows.
         kind = "hall" if source == "topo" and area > 1500 else "house" if source == "barracks" else "barn" if area > 250 and h < 12 else "house"
+        bag = source.startswith("bag-") and barracks_buildings.info(ring)
+        if bag:
+            kind = source[4:]
         meta.append({"id": f"ahn2-{bi}", "kind": kind, "axis": round(long_axis(ring), 4),
                      "glass": False, "year": 1935, "floors": None, "roof": "flat", "area": round(area, 1), "height": h,
                      "roof_rgb": None, "rand": round(rand, 4), "photo": False})
         if source == "station":
             meta[-1]["kind"] = "house"
             meta[-1]["roof_fixed"] = (122, 126, 130)
+        elif bag:
+            meta[-1]["year"] = bag[0]
+            meta[-1]["roof"] = "slanting" if kind == "house" else "flat"
+            meta[-1]["roof_fixed"] = bag[1] or [(126, 130, 134), (110, 114, 120)][int(rand * 2)]
         elif area > 250:
             # Factory halls: red-brown tiles or grey corrugated sheets, as on the aerial photos of the Enka.
             meta[-1]["roof_fixed"] = [(156, 86, 62), (126, 130, 134), (110, 114, 120)][int(rand * 3)]

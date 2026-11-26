@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from config import BUILD, RAW, in_era
+from config import BUILD, ERA, RAW, in_era
 from geo import wgs_to_rd
 
 # Buildings found by an address or point; `pand` is resolved to the 3D BAG building under that point.
@@ -563,9 +563,24 @@ BRIDGES = [
         ],
         "span": (10, 11),
         "embankment": "end",  # the ramp on the Enka side (after the span) is a raised bank of earth, not on columns
+        # That bank is one body of sand: between these two points of the path, the abutment and the lower leg of the
+        # hairpin below it, the inside of the bend is filled, sloping from the upper leg down to the lower.
+        "fill": (11, 26),
+        # On the side of the railway the upper leg stands on a wall of stacked concrete blocks (the kind with studs on
+        # top), from the abutment to the bend, and the sand is tipped against that.
+        "blocks": (11, 16),
+        "block": (204, 202, 194),
+        # A footpath runs beside the cycle path on the inside of the hairpin (the right of the path), in grey paving.
+        "sidewalk": 2.0,
+        "walk": (140, 138, 132),  # the grey of the ground's paving tiles, once the sun here is on it
+        # The stairs on the Enka side, in light concrete, lying on that sand with a handrail down the middle (top and
+        # bottom of each flight, traced on the aerial photos): from the footpath at the top of the ramp straight down
+        # to the footpath of the lower leg of the hairpin, and from the other side of that leg down to the path.
+        "stairs": [((175318.3, 448616.5), (175317.05, 448602.7)), ((175314.8, 448596.5), (175313.2, 448589.3))],
+        "stair": (214, 212, 204),
         "height": 7.5,
         "width": 4.6,
-        "deck": (212, 118, 60),  # the orange of the cycle path
+        "deck": (150, 98, 80),  # the red asphalt of the cycle path, as the sun here leaves it on the ground's paths
         "wall": (200, 198, 190),
         "rail": (70, 74, 80),
     },
@@ -674,6 +689,13 @@ def auto_bridges(manual):
     rd = lambda w: [wgs_to_rd(g["lat"], g["lon"]) for g in w["geometry"]]
     # Covered by a hand-made bridge of any era: one that is not there yet (the Langzaamverkeerbrug) is not built from OSM either.
     taken = [LineString(b["path"]) for b in list(manual) + BRIDGES]
+    # In an earlier year only the bridges that OpenStreetMap already had in 2012: the footbridges of the park on the
+    # barracks terrains came after.
+    then = RAW / "osm_roads-2012.json"
+    old = None
+    if ERA is not None and then.exists():
+        old = [LineString(rd(w)) for w in json.loads(then.read_text())["elements"]
+               if w["type"] == "way" and len(w.get("geometry", [])) > 1 and w.get("tags", {}).get("bridge") not in (None, "no")]
 
     def ramp(w, end, length):
         """Points along the ways that continue from `end` of w (0 start, -1 end), outward, `length` meters long."""
@@ -706,6 +728,8 @@ def auto_bridges(manual):
             continue
         span = rd(w)
         if any(LineString(span).distance(m) < 5 for m in taken):
+            continue
+        if old is not None and not any(LineString(span).distance(m) < 15 for m in old):
             continue
         length = AUTO_RAMP.get(hw, 60)
         before, after = ramp(w, 0, length)[::-1], ramp(w, -1, length)

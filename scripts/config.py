@@ -68,8 +68,9 @@ AREAS = {
     "2009": (174250, 447500, 176750, 450500),
     "1987": (174250, 447500, 176750, 450500),
 }
-# The try-out area: 1 x 1 km with the station, the Enka terrain and the streets of terraced houses north of the railway.
-PROTO_AREA = (174250, 448000, 175250, 449000)
+# The try-out area: 1 x 1 km with the station, the Enka terrain and the streets of terraced houses north of the railway,
+# or another box on the 500 m grid (PROTO_AREA=174750,448000,175750,449000 for the bridge to the Sysselt).
+PROTO_AREA = tuple(int(v) for v in os.environ.get("PROTO_AREA", "174250,448000,175250,449000").split(","))
 AREA = PROTO_AREA if PROTO else AREAS[ERA]
 XMIN, YMIN, XMAX, YMAX = AREA
 NOW_AREA = AREAS[None]  # what the bbox downloads cover
