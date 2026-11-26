@@ -90,6 +90,7 @@ def fill_outside(img, covered):
 
 
 PAD = 2  # atlas padding in pixels, so neighbouring crops don't bleed into each other
+MAX_TEXTURE = 16384  # the largest texture side of the GPUs the map is rendered on
 
 
 def gradient(aerial):
@@ -166,17 +167,22 @@ def build(aerial, roofs, fixed=None):
 
     # Shelf packing, tallest first.
     crops.sort(key=lambda c: -c[3].shape[0])
-    width = 4096
-    x = y = shelf = 0
-    placed = []
-    for key, shift, origin, img in crops:
-        h, w = img.shape[:2]
-        if x + w + PAD > width:
-            x, y, shelf = 0, y + shelf + PAD, 0
-        placed.append((key, shift, origin, img, x, y))
-        x += w + PAD
-        shelf = max(shelf, h)
-    height = int(2 ** np.ceil(np.log2(y + shelf + PAD)))
+    # As wide as it takes to stay under MAX_TEXTURE high: a GPU scales a larger texture down, and the roofs blur.
+    width = 2048
+    while True:
+        width *= 2
+        x = y = shelf = 0
+        placed = []
+        for key, shift, origin, img in crops:
+            h, w = img.shape[:2]
+            if x + w + PAD > width:
+                x, y, shelf = 0, y + shelf + PAD, 0
+            placed.append((key, shift, origin, img, x, y))
+            x += w + PAD
+            shelf = max(shelf, h)
+        height = int(2 ** np.ceil(np.log2(y + shelf + PAD)))
+        if height <= MAX_TEXTURE or width >= MAX_TEXTURE:
+            break
     atlas = np.zeros((height, width, 3), np.uint8)
     rects = {}
     for key, shift, origin, img, x, y in placed:

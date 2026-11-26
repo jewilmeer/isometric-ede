@@ -542,7 +542,12 @@ vec3 buildingPattern(vec3 base) {
       if (mod(along, 5.0) < 0.2) c *= 0.93;
     } else {
       // The real roof from the aerial photo, when there is one: solar panels, skylights, chimneys.
-      if (vAtlas.x >= 0.0) c = texture2D(roofAtlas, vAtlas).rgb;
+      if (vAtlas.x >= 0.0) {
+        c = texture2D(roofAtlas, vAtlas).rgb;
+        // The photo's roofs are already sunlit: light ones a little deeper and fuller, or the sun here bleaches them.
+        float l = dot(c, vec3(0.3, 0.59, 0.11));
+        c = (l + (c - l) * 1.25) * mix(1.0, 0.8, smoothstep(0.28, 0.46, l));
+      }
       if (vWorldNormal.y < 0.97) {
         // Pitched roof: courses of tiles along the contour.
         c *= 1.0 - (vAtlas.x >= 0.0 ? 0.03 : 0.06) * smoothstep(0.35, 0.6, 0.5 + 0.5 * cos(6.2832 * vWorld.y / 0.55)) * (1.0 - smoothstep(0.1, 0.22, pwy));
