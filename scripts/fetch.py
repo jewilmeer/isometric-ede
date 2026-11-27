@@ -5,6 +5,7 @@
 """Download the raw open data for the area: 3D BAG, BGT, aerial photos and AHN."""
 
 import json
+import math
 import sys
 import time
 import urllib.parse
@@ -143,8 +144,14 @@ def fetch_bgt(coll):
     print(f"bgt {coll}: {len(current)} current of {len(feats)}", file=sys.stderr)
 
 
-def fetch_aerial(ix, iy, chunk=CHUNK, res=0.25):
-    d = RAW / "aerial"
+# The aerial photo comes in two flights a year: the winter one (8 cm, bare trees, long shadows) shows the roofs and the
+# ground under the trees, the summer one (25 cm) the colours of a map in leaf. The quick ortho is that summer's first
+# release: the final one of the year before still shows the building sites round the station.
+AERIAL = {"aerial": "Actueel_orthoHR", "aerial-summer": "2026_quickortho25"}
+
+
+def fetch_aerial(ix, iy, chunk=CHUNK, res=0.25, name="aerial"):
+    d = RAW / name
     d.mkdir(exist_ok=True)
     x0, y0 = XMIN + ix * chunk, YMIN + iy * chunk
     out = d / f"{x0}_{y0}.jpg"
@@ -156,7 +163,7 @@ def fetch_aerial(ix, iy, chunk=CHUNK, res=0.25):
             "SERVICE": "WMS",
             "VERSION": "1.3.0",
             "REQUEST": "GetMap",
-            "LAYERS": "Actueel_orthoHR",
+            "LAYERS": AERIAL[name],
             "STYLES": "",
             "CRS": "EPSG:28992",
             "BBOX": f"{x0},{y0},{x0 + chunk},{y0 + chunk}",
@@ -166,6 +173,61 @@ def fetch_aerial(ix, iy, chunk=CHUNK, res=0.25):
         }
     )
     out.write_bytes(get(f"https://service.pdok.nl/hwh/luchtfotorgb/wms/v1_0?{q}", binary=True))
+
+
+# The aerial photos of earlier years (Kadaster and Cyclomedia/Aerodata, free to use with attribution) are ArcGIS tile
+# services like the topographic maps (scripts/topo_fetch.py): the finest level with tiles is 13, 0.397 m per pixel.
+# Each is cut into the same 500 m chunks at 0.25 m as the others, for the earlier eras' area, named aerial-<year>.
+OLD_AERIAL = "https://tiles.arcgis.com/tiles/nSZVuSZjHpEZZbRo/arcgis/rest/services/Luchtfoto_{year}/MapServer"
+OLD_LEVEL = 13
+
+
+def old_aerials():
+    """The years of the aerial photos the eras use: ERAS "photo" (colour) and "texture" (black and white)."""
+    return sorted({v for e in ERAS.values() for k, v in e.items() if k in ("photo", "texture")})
+
+
+def fetch_old_aerial(year, ix, iy, tiles, chunk=CHUNK, res=0.25):
+    """One chunk of the photo of `year` at `res`, resampled from the service's tiles (cached in data/raw/luchtfoto-<year>)."""
+    from PIL import Image
+
+    d = RAW / f"aerial-{year}"
+    d.mkdir(exist_ok=True)
+    x0, y0 = PAST[0] + ix * chunk, PAST[1] + iy * chunk
+    out = d / f"{x0}_{y0}.jpg"
+    if out.exists():
+        return
+    ox, oy, tres = tiles
+    span = 256 * tres
+    c0, c1 = math.floor((x0 - 2 - ox) / span), math.floor((x0 + chunk + 2 - ox) / span)
+    r0, r1 = math.floor((oy - (y0 + chunk + 2)) / span), math.floor((oy - (y0 - 2)) / span)
+    cache = RAW / f"luchtfoto-{year}"
+    cache.mkdir(exist_ok=True)
+    mosaic = Image.new("RGB", ((c1 - c0 + 1) * 256, (r1 - r0 + 1) * 256), (128, 128, 128))
+    for r in range(r0, r1 + 1):
+        for c in range(c0, c1 + 1):
+            f = cache / f"{OLD_LEVEL}_{r}_{c}.jpg"
+            if not f.exists():
+                tmp = f.with_name(f.name + f".{ix}_{iy}")  # neighbouring chunks share tiles
+                tmp.write_bytes(get(f"{OLD_AERIAL.format(year=year)}/tile/{OLD_LEVEL}/{r}/{c}", binary=True))
+                tmp.replace(f)
+            mosaic.paste(Image.open(f).convert("RGB"), ((c - c0) * 256, (r - r0) * 256))
+    k = res / tres  # source pixels per output pixel
+    mosaic.transform((int(chunk / res),) * 2, Image.AFFINE, (k, 0, (x0 - (ox + c0 * span)) / tres, 0, k, ((oy - r0 * span) - (y0 + chunk)) / tres),
+                     Image.BICUBIC).save(out, quality=93)
+
+
+def fetch_old_aerials():
+    """Every old aerial photo the eras use, for the earlier eras' area (PAST). Run with pillow: see build.sh."""
+    for year in old_aerials():
+        info = get(f"{OLD_AERIAL.format(year=year)}?f=json")["tileInfo"]
+        lod = next(l for l in info["lods"] if l["level"] == OLD_LEVEL)
+        tiles = (info["origin"]["x"], info["origin"]["y"], lod["resolution"])
+        nx, ny = int((PAST[2] - PAST[0]) / CHUNK), int((PAST[3] - PAST[1]) / CHUNK)
+        with ThreadPoolExecutor(8) as pool:
+            for fut in [pool.submit(fetch_old_aerial, year, i, j, tiles) for i in range(nx) for j in range(ny)]:
+                fut.result()
+        print(f"aerial {year}: done", file=sys.stderr)
 
 
 def fetch_ahn(cov, ix, iy, chunk=CHUNK):
@@ -304,6 +366,31 @@ out geom tags;"""
             break
 
 
+def fetch_bag_demolished():
+    """The BAG panden with status "Pand gesloopt" in the earlier eras' area (PAST), into bag_gesloopt.json: footprint,
+    year of construction and the date of the demolition document. The Kadaster's OGC API keeps them (the older WFS of
+    PDOK does not serve them); scripts/barracks_buildings.py puts them back on the map of an earlier year."""
+    out = RAW / "bag_gesloopt.json"
+    WANT[out] = PAST
+    if covers(out, PAST):
+        return
+    q = urllib.parse.urlencode(
+        {"status": "Pand gesloopt", "bbox": ",".join(map(str, PAST)), "bbox-crs": RD, "crs": RD, "limit": 1000, "f": "json"})
+    url = f"https://api.pdok.nl/kadaster/bag/ogc/v2/collections/pand/items?{q}"
+    panden = []
+    while url:
+        page = get(url)
+        for f in page["features"]:
+            g, p = f["geometry"], f["properties"]
+            rings = [g["coordinates"][0]] if g["type"] == "Polygon" else [poly[0] for poly in g["coordinates"]]
+            panden += [{"id": p["identificatie"], "bouwjaar": p.get("bouwjaar"), "datum": p.get("documentdatum"),
+                        "ring": [[round(x, 2), round(y, 2)] for x, y in r[:-1]]} for r in rings]
+        url = next((l["href"] for l in page["links"] if l["rel"] == "next"), None)
+    out.write_text(json.dumps(panden))
+    done(out, PAST)
+    print(f"bag: {len(panden)} demolished panden", file=sys.stderr)
+
+
 def fetch_attic():
     """The roads and the railway as OpenStreetMap had them at ATTIC, into osm_roads-2012.json and osm_rail-2012.json.
     History queries are slow, so the roads come in four parts."""
@@ -348,7 +435,7 @@ def main():
     migrate()
     jobs = [fetch_3dbag, fetch_addresses, fetch_osm, fetch_routes, fetch_roads, fetch_rail, *(lambda c=c: fetch_bgt(c) for c in BGT_COLLECTIONS)]
     jobs += [lambda c=c, i=i, j=j: fetch_ahn(c, i, j) for c in ("dsm_05m", "dtm_05m") for i in range(NX) for j in range(NY)]
-    jobs += [lambda i=i, j=j: fetch_aerial(i, j) for i in range(NX) for j in range(NY)]
+    jobs += [lambda i=i, j=j, a=a: fetch_aerial(i, j, name=a) for a in AERIAL for i in range(NX) for j in range(NY)]
     with ThreadPoolExecutor(8) as pool:
         for fut in [pool.submit(j) for j in jobs]:
             fut.result()

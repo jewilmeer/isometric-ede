@@ -324,6 +324,8 @@
   }
   #make-dialog nav button:hover, #make-dialog nav a:hover { border-color: #8a5a2b; color: #8a5a2b; }
   #make-dialog nav .close { margin-left: auto; }
+  #make-dialog .contact { margin: 12px 0 0; font-size: 11px; text-align: right; opacity: 0.55; }
+  #make-dialog .contact a { color: inherit; }
   @media (max-width: 640px) {
     #make { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
     #minimap-frame, #readout { display: none; }
@@ -425,6 +427,14 @@ Then:
 3. Replace the places in scripts/landmarks.py with buildings and places from my village or town, each with a short story. Take out or replace what belongs to Helenaveen only: the tour (scripts/build_history.py) and the fixed spots in viewer/index.html, such as the starting point, the village centre for the street lamps and the swimmers in the canal.
 4. Put the map online, for example with GitHub Pages (deploy.sh).
 
+Then make it more real. Isometric Ede (https://jewilmeer.github.io/isometric-ede/, code: https://github.com/jewilmeer/isometric-ede) builds on the Helenaveen example and shows how; read that README too:
+- Take an aerial photo flown in summer, with the trees in leaf. A winter flight gives bare trees and a dull map.
+- Lay the photo on the roofs: cut each roof out per building, shift it exactly onto the footprint, and take out shadows and blotches. Solar panels, roof windows and chimneys then come along by themselves. Tone light roofs down, or they wash out under the renderer&#x27;s sun.
+- Lay the photo softly over the ground: enough for grass, sand and paving, but not under tree crowns or right beside buildings, where the photo shows shadows and leaning walls.
+- Give the fronts doors and windows. Sheds and huts of a few square metres get a door and no windows.
+- Put no trees on bridges, roads, railways or roofs, and no buildings right along the track: those are trains, overhead wires and noise in the height data.
+- Try every change on one square kilometre first and show me the crop, before you build the whole map.
+
 Work step by step, check the licences of the data you use, and ask me about the stories and places that only the people who live there know.">Maak een isometrische pixel-art-kaart van [jouw dorp of stad, en het land], net als Isometrisch Helenaveen: https://jankeesvw.github.io/isometric-helenaveen/
 
 Gebruik de code van https://github.com/jankeesvw/isometric-helenaveen als voorbeeld. Clone de repo en lees eerst de README: die beschrijft de hele pijplijn, van open data tot de viewer.
@@ -443,12 +453,21 @@ Daarna:
 3. Vervang de plekken in scripts/landmarks.py door gebouwen en plekken van mijn dorp of stad, elk met een kort verhaal. Haal de dingen die alleen bij Helenaveen horen eruit of vervang ze: de rondleiding (scripts/build_history.py) en de vaste punten in viewer/index.html, zoals het beginpunt, de dorpskern voor de lantaarns en de zwemmers in het kanaal.
 4. Zet de kaart online, bijvoorbeeld met GitHub Pages (deploy.sh).
 
+Maak hem daarna echter. Isometrisch Ede (https://jewilmeer.github.io/isometric-ede/, code: https://github.com/jewilmeer/isometric-ede) bouwt voort op het voorbeeld van Helenaveen en laat zien hoe; lees ook die README:
+- Neem een luchtfoto uit de zomer, met de bomen in blad. Een wintervlucht geeft kale bomen en een grauwe kaart.
+- Leg de foto op de daken: knip per gebouw het dak uit, schuif het precies op de omtrek, en haal schaduwen en vlekken eruit. Zonnepanelen, dakramen en schoorstenen komen dan vanzelf mee. Demp lichte daken, anders bleken ze uit in de zon van de renderer.
+- Leg de foto zacht over de grond: genoeg voor gras, zand en bestrating, maar niet onder boomkruinen en vlak naast gebouwen, want daar staan schaduwen en scheve gevels op de foto.
+- Geef de gevels deuren en ramen. Schuurtjes en huisjes van een paar vierkante meter krijgen een deur en geen ramen.
+- Zet geen bomen op bruggen, wegen, sporen en daken, en geen gebouwen pal langs het spoor: dat zijn treinen, bovenleiding en ruis in de hoogtedata.
+- Probeer elke verandering eerst op één vierkante kilometer en laat me de uitsnede zien, voordat je de hele kaart bouwt.
+
 Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vraag me naar de verhalen en plekken die alleen de mensen die er wonen kennen.</pre>
   <nav>
     <button type="button" id="make-copy" data-en="Copy the prompt">Kopieer de opdracht</button>
     <a href="https://github.com/jewilmeer/isometric-ede" target="_blank" rel="noopener" data-en="Code on GitHub">Code op GitHub</a>
     <button type="button" class="close" id="make-close" data-en="Close">Sluiten</button>
   </nav>
+  <p class="contact" data-en-html="Tried something yourself and stuck, or want to ask something? &lt;a href=&quot;mailto:jewilmeer+3d@gmail.com&quot;&gt;jewilmeer+3d@gmail.com&lt;/a&gt;">Zelf wat geprobeerd, maar loop je vast, of wil je wat vragen? <a href="mailto:jewilmeer+3d@gmail.com">jewilmeer+3d@gmail.com</a></p>
 </dialog>
 <div id="tip" hidden></div>
 
@@ -534,9 +553,9 @@ Werk stap voor stap, controleer de licenties van de data die je gebruikt, en vra
       let past = '';
       if (ERA_KEY === '2009') {
         past = L('2009: AHN2 (2007-2012, publiek domein, via GeoTiles), OpenStreetMap zoals in 2012, Topografische kaart 2008 (Kadaster/', '2009: AHN2 (2007-2012, public domain, via GeoTiles), OpenStreetMap as in 2012, Topographic map 2008 (Kadaster/')
-          + TOPO + ', ' + a('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0') + ')';
+          + TOPO + ', ' + a('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0') + L('), luchtfoto 2009 (Cyclomedia/Aerodata)', '), aerial photo 2009 (Cyclomedia/Aerodata)');
       } else if (ERA_KEY === '1987') {
-        past = L('1987: Topografische kaart 1987 (Kadaster/', '1987: Topographic map 1987 (Kadaster/') + TOPO + ', ' + a('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0') + '), AHN2';
+        past = L('1987: Topografische kaart 1987 (Kadaster/', '1987: Topographic map 1987 (Kadaster/') + TOPO + ', ' + a('https://creativecommons.org/licenses/by/4.0/', 'CC BY 4.0') + L('), luchtfoto 2006, zwart-wit (Kadaster), AHN2', '), aerial photo 2006, black and white (Kadaster), AHN2');
       }
       el.innerHTML = base + (past ? '. ' + past : '') + L('. Verhalen: BOEi, AM (Op Enka), Wikipedia', '. Stories: BOEi, AM (Op Enka), Wikipedia');
     };

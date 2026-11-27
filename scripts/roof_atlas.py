@@ -1,8 +1,10 @@
-"""Real roof detail from the aerial photo: solar panels, skylights, chimneys, moss and patched tiles.
+"""Real roof detail from the aerial photo: solar panels, skylights, chimneys, dormers, moss and patched tiles.
 
 For every building the photo is first lined up with the footprint (the photo leans and is never exactly on top of
-the BAG outline), then each roof face is brought to the same brightness so the sun and shade sides of the photo
-don't double up with the renderer's own lighting. The crops are packed into one texture atlas.
+the BAG outline). Then it is tidied up so it reads as a clean rendering rather than a noisy photo: every roof face is
+brought to the same brightness and its low-frequency blotches (shadows of trees and neighbours) are flattened, tree
+crowns are toned toward the roof color, the blue of sky reflections on panels and roof windows is tamed, and JPEG grain
+is removed without blurring edges. The crops are packed into one texture atlas.
 """
 
 import numpy as np
@@ -13,50 +15,82 @@ from aerial import world_to_px
 from config import BUILD, GROUND_RES
 
 SEARCH_M = 2.0  # how far the photo may be off, in meters
-
-# Same palette as ROOFS in render/scene.js: the main color of every roof snaps to one of these.
-PALETTE = np.array([
-    (176, 84, 58), (140, 64, 50), (108, 56, 46), (66, 68, 74), (88, 90, 96), (120, 122, 124),
-    (150, 150, 146), (184, 182, 176), (120, 92, 70), (98, 114, 98), (214, 214, 206), (44, 48, 56),
-], np.float32)
+TARGET_MAX = 120  # brightest roof the renderer's own sun can take without washing out to pink or white
+PEAK_MAX = 140  # and the same for its strongest channel: red tiles clip to pink sooner than grey ones to white
+FLAT_SIGMA = 12  # in pixels (3 m): blotches wider than this inside a roof face are shadows, not roof detail
 
 
-def quantize(img, covered, fixed=None, k=4):
-    """Reduce a roof to a few flat colors, like a pixel artist would: the main color from the palette (or a fixed
-    color for monuments), the rest (solar panels, skylights, chimneys) kept as their own, slightly punchier colors."""
-    px = img[covered]
-    k = min(k, max(1, len(px) // 40))
-    lum = px.mean(1)
-    order = np.argsort(lum)
-    centers = np.stack([px[order[int((i + 0.5) / k * (len(px) - 1))]] for i in range(k)]).astype(np.float32)
-    for _ in range(8):
-        lab = ((px[:, None, :] - centers[None]) ** 2).sum(-1).argmin(1)
-        for j in range(k):
-            if (lab == j).any():
-                centers[j] = px[lab == j].mean(0)
-    labels = np.full(covered.shape, -1, np.int32)
-    labels[covered] = lab
-    # Clean up single-pixel speckle.
-    labels = np.where(covered, ndi.median_filter(np.where(covered, labels, 0), size=3), -1)
-    counts = np.bincount(labels[covered], minlength=k)
-    main = int(counts.argmax())
-    out = np.empty_like(centers)
+def lum_of(img):
+    return img @ np.array([0.299, 0.587, 0.114], np.float32)
+
+
+def smooth(x, w, sigma):
+    """Gaussian blur of x counting only where weight w is."""
+    return ndi.gaussian_filter(x * w, sigma) / np.maximum(ndi.gaussian_filter(w, sigma), 1e-3)
+
+
+def flatten_face(img, lum, m, target):
+    """Bring one roof face to the target brightness and remove slow brightness blotches (tree and neighbour shadows),
+    leaving anything small: panels, skylights, chimneys, tile texture."""
+    gain = np.ones_like(lum)
+    med = max(float(np.median(lum[m])), 1.0)
+    gain[m] = target / med
+    if m.sum() > 40:
+        ratio = np.maximum(lum / med, 0.05)
+        w = m * np.exp(-((np.log(ratio) / 0.35) ** 2))  # dark panels and bright skylights don't count as "the roof"
+        low = smooth(lum, w, FLAT_SIGMA)
+        gain[m] = (target / np.maximum(low, 1.0)).clip(0.6, 1.5)[m]
+    out = img.copy()
+    out[m] = img[m] * gain[m, None]
+    return out
+
+
+def roof_color(img, mask):
+    """Typical color of the roof: median of the pixels that are neither trees nor blue glass."""
+    px = img[mask]
+    ok = (px[:, 1] - np.maximum(px[:, 0], px[:, 2]) < 3) & (px[:, 2] - px[:, 0] < 12)
+    return np.median(px[ok] if ok.sum() > 20 else px, axis=0)
+
+
+def tidy(img, covered, fixed=None):
+    """Clean up a roof: tone trees and sky blue down, denoise, keep contrast modest. Monuments get their fixed color."""
+    base = roof_color(img, covered)
+    lum = lum_of(img)
+    med = max(float(lum_of(base)), 1.0)
+    # Overhanging tree crowns: greenish pixels on a roof that isn't green itself, pulled to the roof color.
+    if base[1] - max(base[0], base[2]) < 6:
+        green = img[..., 1] - np.maximum(img[..., 0], img[..., 2])
+        a = ndi.gaussian_filter(np.clip((green - 2) / 10, 0, 1) * covered, 0.8).clip(0, 1)[..., None]
+        shade = ndi.gaussian_filter(lum / med, 1.5).clip(0.8, 1.05)[..., None]
+        img = img * (1 - a) + base * shade * a
+        lum = lum_of(img)
+    # Sky reflections: panels and roof windows read dark blue-grey, not bright blue.
+    blue = np.clip((img[..., 2] - img[..., 0] - 10) / 25, 0, 1)[..., None]
+    l = lum[..., None]
+    img = l + (img - l) * (1 - 0.75 * blue)  # less saturated
+    img = img * (1 - 0.15 * blue - 0.25 * blue * np.clip((l - 0.5 * med) / med, 0, 1))  # and darker
+    # Grain: median per channel, then a touch of smoothing.
+    img = np.stack([ndi.median_filter(img[..., c], size=3) for c in range(3)], -1)
+    img = ndi.gaussian_filter(img, (0.5, 0.5, 0))
+    # Modest contrast around the roof color.
+    img = base + (img - base) * 0.9
+    if base.max() > PEAK_MAX:
+        img = img * (PEAK_MAX / float(base.max()))
     if fixed is not None:
-        target = np.array(fixed, np.float32)
-    else:
-        sat = centers[main].mean() + (centers[main] - centers[main].mean()) * 1.5
-        target = PALETTE[((PALETTE - sat) ** 2 * (0.9, 1.2, 1.0)).sum(1).argmin()]
-    shift = target - centers[main]
-    for j in range(k):
-        c = centers[j] + shift  # keep each feature's difference from the main roof color
-        m = c.mean()
-        out[j] = np.clip(m + (c - m) * 1.3, 0, 255)
-    out[main] = target
-    res = np.empty_like(img)
-    res[:] = target
-    res[covered] = out[labels[covered]]
-    return res
+        # Monument: tint so the roof as a whole ends up at its known color, detail stays.
+        now = np.median(img[covered], axis=0)
+        img = img * (np.array(fixed, np.float32) / np.maximum(now, 1.0))
+    return np.clip(img, 0, 255)
+
+
+def fill_outside(img, covered):
+    """Spread the nearest roof pixel into the pixels around the roof, so texture filtering at the edge stays roof."""
+    idx = ndi.distance_transform_edt(~covered, return_distances=False, return_indices=True)
+    return img[idx[0], idx[1]]
+
+
 PAD = 2  # atlas padding in pixels, so neighbouring crops don't bleed into each other
+MAX_TEXTURE = 16384  # the largest texture side of the GPUs the map is rendered on
 
 
 def gradient(aerial):
@@ -112,7 +146,7 @@ def build(aerial, roofs, fixed=None):
         if c1 - c0 < 2 or r1 - r0 < 2:
             continue
         crop = aerial[r0:r1, c0:c1].astype(np.float32)
-        lum = crop.mean(-1)
+        lum = lum_of(crop)
         masks = []
         for f in faces:
             m = Image.new("L", (c1 - c0, r1 - r0), 0)
@@ -123,29 +157,32 @@ def build(aerial, roofs, fixed=None):
         covered = np.any(masks, axis=0) if masks else np.zeros(lum.shape, bool)
         if covered.sum() < 4:
             continue
-        target = float(np.median(lum[covered]))
+        target = min(float(np.median(lum[covered])), TARGET_MAX)
         out = crop.copy()
         for m in masks:
-            if m.sum() < 4:
-                continue
-            face_lum = float(np.median(lum[m]))
-            out[m] = crop[m] * (target / max(face_lum, 1.0))
-        out = quantize(out, covered, (fixed or {}).get(key))
+            if m.sum() >= 4:
+                out = flatten_face(out, lum, m, target)
+        out = tidy(fill_outside(out, covered), covered, (fixed or {}).get(key))
         crops.append((key, (sx, sy), (c0, r0), out.astype(np.uint8)))
 
     # Shelf packing, tallest first.
     crops.sort(key=lambda c: -c[3].shape[0])
-    width = 4096
-    x = y = shelf = 0
-    placed = []
-    for key, shift, origin, img in crops:
-        h, w = img.shape[:2]
-        if x + w + PAD > width:
-            x, y, shelf = 0, y + shelf + PAD, 0
-        placed.append((key, shift, origin, img, x, y))
-        x += w + PAD
-        shelf = max(shelf, h)
-    height = int(2 ** np.ceil(np.log2(y + shelf + PAD)))
+    # As wide as it takes to stay under MAX_TEXTURE high: a GPU scales a larger texture down, and the roofs blur.
+    width = 2048
+    while True:
+        width *= 2
+        x = y = shelf = 0
+        placed = []
+        for key, shift, origin, img in crops:
+            h, w = img.shape[:2]
+            if x + w + PAD > width:
+                x, y, shelf = 0, y + shelf + PAD, 0
+            placed.append((key, shift, origin, img, x, y))
+            x += w + PAD
+            shelf = max(shelf, h)
+        height = int(2 ** np.ceil(np.log2(y + shelf + PAD)))
+        if height <= MAX_TEXTURE or width >= MAX_TEXTURE:
+            break
     atlas = np.zeros((height, width, 3), np.uint8)
     rects = {}
     for key, shift, origin, img, x, y in placed:

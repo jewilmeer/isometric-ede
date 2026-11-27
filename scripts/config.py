@@ -9,7 +9,10 @@ RAW = ROOT / "data" / "raw"
 
 # The year the map shows: unset for now, or one of ERAS (ERA=2009 ./build.sh). Each era builds into its own folder.
 ERA = os.environ.get("ERA") or None
-BUILD = ROOT / "data" / ("build" if ERA is None else f"build-{ERA}")
+# A try-out build (PROTO=look uv run build_ground.py): today's map, but only PROTO_AREA, into data/build-<name>, so a
+# change to a script shows in a minute instead of after a full build. Render it with render/run.mjs --era <name>.
+PROTO = os.environ.get("PROTO") or None
+BUILD = ROOT / "data" / (f"build-{PROTO}" if PROTO else "build" if ERA is None else f"build-{ERA}")
 NOW = ROOT / "data" / "build"
 
 # The years the map can also show, and what they are made of:
@@ -24,10 +27,13 @@ NOW = ROOT / "data" / "build"
 #              found, such as the old station
 #   osm_area   an RD box where those count too although nothing of today's 3D BAG marks it as changed (the station)
 #   paving     meters of paving round those buildings in the changed area (default 6; 15 where AHN2 is blind)
+#   photo      the year of an aerial photo (data/raw/aerial-<year>, scripts/fetch.py OLD_AERIAL) that gives the ground its
+#              colour in place of today's: right in the changed area too, where it takes the topographic map's place
+#   texture    the year of a black and white photo that gives the ground only its detail (light and dark), not its colour
 ERAS = {
-    "2009": {"label": "2009", "ahn2": True, "built": 2009, "bare": (174750, 448100, 175500, 448700), "topo_blind": 2008, "osm": "2012",
+    "2009": {"label": "2009", "ahn2": True, "built": 2009, "bare": (174750, 448100, 175500, 448700), "topo_blind": 2008, "osm": "2012", "photo": 2009,
              "osm_area": (174300, 448750, 174950, 449000)},
-    "1987": {"label": "1987", "ahn2": True, "built": 1987, "bare": None, "topo": 1987, "paving": 15, "osm": "2012"},
+    "1987": {"label": "1987", "ahn2": True, "built": 1987, "bare": None, "topo": 1987, "paving": 15, "osm": "2012", "texture": 2006},
 }
 ERA_CONF = ERAS.get(ERA, {})
 # Terrains whose street plan has changed completely since (RD): in an earlier era their ground comes from that year's
@@ -62,7 +68,10 @@ AREAS = {
     "2009": (174250, 447500, 176750, 450500),
     "1987": (174250, 447500, 176750, 450500),
 }
-AREA = AREAS[ERA]
+# The try-out area: 1 x 1 km with the station, the Enka terrain and the streets of terraced houses north of the railway,
+# or another box on the 500 m grid (PROTO_AREA=174750,448000,175750,449000 for the bridge to the Sysselt).
+PROTO_AREA = tuple(int(v) for v in os.environ.get("PROTO_AREA", "174250,448000,175250,449000").split(","))
+AREA = PROTO_AREA if PROTO else AREAS[ERA]
 XMIN, YMIN, XMAX, YMAX = AREA
 NOW_AREA = AREAS[None]  # what the bbox downloads cover
 CX, CY = (XMIN + XMAX) / 2, (YMIN + YMAX) / 2
