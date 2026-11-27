@@ -1,6 +1,6 @@
 # Isometric Ede
 
-A zoomable isometric pixel-art map of Ede, 4 × 4 km around the Enka-terrein, the site of the old rayon factory of the Eerste Nederlandsche Kunstzijdefabriek, from Kasteel Hoekelum in the south to the Oude Kerk in the north. Live at [jewilmeer.github.io/isometric-ede](https://jewilmeer.github.io/isometric-ede/).
+A zoomable isometric pixel-art map of Ede, 4 × 4 km around the Enka-terrein, the site of the old rayon factory of the Eerste Nederlandsche Kunstzijdefabriek, from Kasteel Hoekelum in the south to the Oude Kerk in the north. Live at [ede3d.nl](https://ede3d.nl).
 
 [![The centre of Ede on the map, with the year switch and the places to explore](docs/screenshot.jpg)](https://jewilmeer.github.io/isometric-ede/)
 
